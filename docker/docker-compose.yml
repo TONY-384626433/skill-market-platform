@@ -1,0 +1,118 @@
+version: "3.8"
+
+# ============================================================
+# 九江银行私域 Skill 市场 — 本地开发环境
+# 启动: docker compose up -d
+# 停止: docker compose down
+# 清理: docker compose down -v
+# ============================================================
+
+services:
+  # ==================== 数据库 ====================
+  postgres:
+    image: postgres:15-alpine
+    container_name: skillhub-postgres
+    environment:
+      POSTGRES_USER: skillhub
+      POSTGRES_PASSWORD: skillhub_dev_2026
+      POSTGRES_DB: skillhub
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skillhub"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ==================== 缓存 ====================
+  redis:
+    image: redis:7-alpine
+    container_name: skillhub-redis
+    command: redis-server --requirepass skillhub_redis_2026 --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ==================== 搜索引擎 ====================
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: skillhub-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      "ES_JAVA_OPTS": "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq red"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  # ==================== 对象存储 ====================
+  minio:
+    image: minio/minio:latest
+    container_name: skillhub-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: skillhub_admin
+      MINIO_ROOT_PASSWORD: skillhub_minio_2026
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== 消息队列 ====================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: skillhub-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: skillhub
+      RABBITMQ_DEFAULT_PASS: skillhub_mq_2026
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ==================== API 密钥管理 ====================
+  vault:
+    image: vault:1.15
+    container_name: skillhub-vault
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: skillhub_vault_token_2026
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+
+volumes:
+  postgres_data:
+  redis_data:
+  es_data:
+  minio_data:
+  rabbitmq_data:

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill 市场 · 九江银行</title>
+<!-- React + Ant Design + Icons via CDN -->
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/antd@5/dist/reset.css">
+<script src="https://unpkg.com/dayjs/dayjs.min.js"></script>
+<script src="https://unpkg.com/antd@5/dist/antd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f0f2f5; }
+.header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 20px; text-align: center; color: #fff; }
+.header h1 { font-size: 28px; margin-bottom: 8px; }
+.header p { opacity: .85; font-size: 14px; margin-bottom: 24px; }
+.stats-row { display: flex; justify-content: center; gap: 24px; margin: 24px 48px; flex-wrap: wrap; }
+.stat-card { background: #fff; border-radius: 12px; padding: 20px 32px; text-align: center; min-width: 140px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.stat-card .num { font-size: 32px; font-weight: 700; }
+.stat-card .label { color: #888; font-size: 13px; margin-top: 4px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 0 24px 40px; }
+.filters { background: #fff; border-radius: 12px; padding: 16px 24px; margin-bottom: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.skill-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); cursor: pointer; transition: transform .2s; }
+.skill-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.1); }
+.skill-card .icon { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 12px; }
+.skill-card h3 { font-size: 15px; margin-bottom: 6px; }
+.skill-card .summary { color: #666; font-size: 12px; margin-bottom: 10px; min-height: 34px; }
+.skill-card .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.skill-card .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: #f0f5ff; color: #2f54eb; }
+.skill-card .tag.green { background: #f6ffed; color: #52c41a; }
+.skill-card .tag.orange { background: #fff7e6; color: #fa8c16; }
+.skill-card .meta { display: flex; justify-content: space-between; font-size: 12px; color: #999; margin-top: 8px; }
+.empty { text-align: center; padding: 80px 0; color: #999; }
+.detail-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.45); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.detail-card { background: #fff; border-radius: 16px; width: 700px; max-height: 80vh; overflow-y: auto; padding: 32px; }
+.detail-card h2 { font-size: 22px; margin-bottom: 12px; }
+.detail-card .desc { color: #555; line-height: 1.8; margin-bottom: 20px; }
+.install-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #52c41a; color: #fff; padding: 12px 32px; border-radius: 8px; font-size: 15px; z-index: 2000; animation: fadeIn .3s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-20px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.btn-primary { background: #1677ff; color: #fff; }
+.btn-primary:hover { background: #4096ff; }
+.btn-default { background: #fff; color: #333; border: 1px solid #d9d9d9; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState } = React;
+
+// ============================================================
+// 模拟数据
+// ============================================================
+const MOCK_SKILLS = [
+  { id: 1, name: "数据库智能巡检助手", category: "智能运维", tags: ["数据库","巡检","MySQL"], stability: "stable",
+    summary: "基于 Zabbix + CMDB 自动执行数据库健康检查,生成巡检报告", author: "DBA团队", version: "1.2.0",
+    installs: 1230, rating: 4.9, icon: "🏥",
+    description: "通过 MCP 协议对接 Zabbix 监控与 CMDB 配置库,支持 MySQL/Oracle/PostgreSQL/达梦等多种数据库。检查项包括 CPU/内存/磁盘使用率、连接池状态、慢查询分析、主从复制延迟。每日自动巡检,异常自动告警。" },
+  { id: 2, name: "日志敏感信息识别", category: "安全合规", tags: ["日志","脱敏","PII"], stability: "stable",
+    summary: "面向应用日志的敏感信息智能识别与脱敏处理", author: "安全团队", version: "1.0.0",
+    installs: 980, rating: 4.8, icon: "🔒",
+    description: "融合正则匹配与上下文语义推理,精准识别人名、身份证号、手机号、银行卡号等非结构化敏感实体。支持自动脱敏和阻断,填补传统正则漏报与泛化能力弱的空白。" },
+  { id: 3, name: "告警收敛分析", category: "智能运维", tags: ["告警","收敛","根因分析"], stability: "stable",
+    summary: "当系统出现异常时,对大量告警进行聚合收敛分析", author: "运维团队", version: "1.1.0",
+    installs: 856, rating: 4.7, icon: "🚨",
+    description: "使用 AI 对历史告警进行分析,当系统出现异常时自动聚合相关告警,识别根因,将数百条告警收敛为 3-5 个核心问题。收敛比可达 20:1。" },
+  { id: 4, name: "AI需求分析助手", category: "研发效能", tags: ["需求","PRD","分析"], stability: "beta",
+    summary: "通过 AI 对需求概述开展现状分析并输出规范化需求文档", author: "产品团队", version: "0.9.0",
+    installs: 520, rating: 4.5, icon: "📝",
+    description: "对需求概述开展现状分析、价值及业务规则细化分析,自动生成包含业务背景、核心价值、业务规则、涉及系统、风险分析的规范化 PRD 文档。" },
+  { id: 5, name: "GitLab 代码评审助手", category: "研发效能", tags: ["GitLab","代码评审","AI"], stability: "beta",
+    summary: "基于 GitLab 的多角色 AI 交叉评审方案", author: "研发团队", version: "0.8.0",
+    installs: 720, rating: 4.7, icon: "💻",
+    description: "针对代码评审低效的痛点,通过拦截合并请求精准拦截高危问题,有效抑制 AI 幻觉。多角色 AI 交叉评审,提升评审效率。" },
+  { id: 6, name: "数据库值守助手", category: "智能运维", tags: ["数据库","值守","Zabbix"], stability: "stable",
+    summary: "基于 Zabbix + Dify 的智能数据库运维助手", author: "DBA团队", version: "1.0.0",
+    installs: 680, rating: 4.6, icon: "🛡️",
+    description: "通过 MCP 将监控数据无缝对接大模型,实现告警自动诊断、根因定位与处置建议生成。将 DBA 从重复性告警排查中解放出来。" },
+  { id: 7, name: "需求效能管理小助手", category: "研发效能", tags: ["需求","效能","报表"], stability: "beta",
+    summary: "通过 AI 辅助处理日常需求产出、时效、质检的报表", author: "PMO团队", version: "0.7.0",
+    installs: 340, rating: 4.3, icon: "📊",
+    description: "自动汇总需求产出、时效、质检数据,生成周报/月报。AI 分析瓶颈和趋势,辅助管理者决策。" },
+  { id: 8, name: "AI 人才分析小助手", category: "智能客服", tags: ["人才","分析","HR"], stability: "beta",
+    summary: "多维度动态分析人员情况,形成分析和诊断报告", author: "HR团队", version: "0.6.0",
+    installs: 210, rating: 4.2, icon: "👥",
+    description: "通过调用指定系统或表格中的人员信息,参考行业、同业、学术研究等报告,多维动态分析指定人员情况。" },
+];
+
+const STATS = { totalSkills: 42, totalInstalls: 1856, monthlyCalls: 1520, activeUsers: 156 };
+const CATEGORIES = ["全部", "智能运维", "研发效能", "安全合规", "数据治理", "智能客服", "风控分析"];
+
+// ============================================================
+// 技能卡片组件
+// ============================================================
+function SkillCard({ skill, onClick }) {
+  return (
+    <div className="skill-card" onClick={() => onClick(skill)}>
+      <div className="icon">{skill.icon}</div>
+      <h3>{skill.name}</h3>
+      <div className="summary">{skill.summary}</div>
+      <div className="tags">
+        <span className="tag">{skill.category}</span>
+        {skill.stability === "stable" ? <span className="tag green">稳定版</span> : <span className="tag orange">测试版</span>}
+        {(skill.tags||[]).slice(0,2).map(t => <span className="tag" key={t}>{t}</span>)}
+      </div>
+      <div className="meta">
+        <span>⭐ {skill.rating} 分</span>
+        <span>📥 {skill.installs} 安装</span>
+        <span>{skill.author} · v{skill.version}</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 技能详情弹窗
+// ============================================================
+function DetailModal({ skill, onClose }) {
+  const [installed, setInstalled] = useState(false);
+  const [token, setToken] = useState("");
+
+  const handleInstall = () => {
+    const fakeToken = "sk-" + Math.random().toString(36).slice(2,10) + "-" + Math.random().toString(36).slice(2,34);
+    setToken(fakeToken);
+    setInstalled(true);
+  };
+
+  if (!skill) return null;
+  return (
+    <div className="detail-overlay" onClick={onClose}>
+      <div className="detail-card" onClick={e => e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:16}}>
+          <div style={{fontSize:48}}>{skill.icon}</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <span className="tag">{skill.category}</span>
+              <span className={skill.stability==="stable"?"tag green":"tag orange"}>{skill.stability}</span>
+              <span className="tag">v{skill.version}</span>
+            </div>
+            <h2>{skill.name}</h2>
+            <p style={{color:"#888",fontSize:13}}>⭐ {skill.rating} 分 · 📥 {skill.installs} 次安装 · {skill.author}</p>
+          </div>
+        </div>
+        <p className="desc">{skill.description}</p>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button className="btn btn-primary" onClick={handleInstall}>
+            {installed ? "✅ 已安装" : "🔧 一键安装"}
+          </button>
+          <button className="btn btn-default" onClick={onClose}>关闭</button>
+        </div>
+        {installed && (
+          <div style={{background:"#f6ffed",border:"1px solid #b7eb8f",padding:16,borderRadius:8}}>
+            <strong>✅ 安装成功!</strong>
+            <p style={{fontSize:13,color:"#555",marginTop:4}}>API Token (仅显示一次):</p>
+            <code style={{fontSize:11,wordBreak:"break-all",background:"#fff",padding:"4px 8px",display:"block",borderRadius:4,marginTop:4}}>{token}</code>
+            <p style={{fontSize:11,color:"#999",marginTop:8}}>请在 Dify 工具配置中使用此 Token。已自动注册为 Dify 自定义工具。</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// 主应用
+// ============================================================
+function App() {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("全部");
+  const [selectedSkill, setSelectedSkill] = useState(null);
+  const [sortBy, setSortBy] = useState("installs");
+
+  let filtered = MOCK_SKILLS.filter(s => {
+    if (category !== "全部" && s.category !== category) return false;
+    if (search && !s.name.includes(search) && !s.summary.includes(search) && !s.tags.some(t=>t.includes(search))) return false;
+    return true;
+  });
+
+  if (sortBy === "rating") filtered.sort((a,b) => b.rating - a.rating);
+  else if (sortBy === "installs") filtered.sort((a,b) => b.installs - a.installs);
+  else filtered.sort((a,b) => b.name.localeCompare(a.name));
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="header">
+        <h1>🧩 Skill 市场</h1>
+        <p>九江银行私域 AI 技能平台 — 建得起 · 找得到 · 用得安 · 管得住</p>
+        <input
+          type="text"
+          placeholder="🔍 搜索技能, 例如: 数据库巡检、日志脱敏、告警收敛..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{width:"100%",maxWidth:560,padding:"12px 20px",borderRadius:8,border:"none",fontSize:14,outline:"none"}}
+        />
+      </div>
+
+      {/* 统计 */}
+      <div className="stats-row">
+        <div className="stat-card"><div className="num" style={{color:"#1677ff"}}>{STATS.totalSkills}</div><div className="label">技能总数</div></div>
+        <div className="stat-card"><div className="num" style={{color:"#52c41a"}}>{STATS.totalInstalls}</div><div className="label">累计安装</div></div>
+        <div className="stat-card"><div className="num" style={{color:"#faad14"}}>{STATS.monthlyCalls}</div><div className="label">月调用量</div></div>
+        <div className="stat-card"><div className="num" style={{color:"#722ed1"}}>{STATS.activeUsers}</div><div className="label">月活用户</div></div>
+      </div>
+
+      {/* 筛选 */}
+      <div className="container">
+        <div className="filters">
+          <span style={{fontSize:13,color:"#888",marginRight:4}}>分类:</span>
+          {CATEGORIES.map(c => (
+            <span key={c} onClick={() => setCategory(c)}
+              style={{cursor:"pointer",padding:"4px 12px",borderRadius:4,fontSize:13,
+                background: category===c ? "#1677ff" : "#f5f5f5",
+                color: category===c ? "#fff" : "#333"}}>{c}</span>
+          ))}
+          <span style={{flex:1}}></span>
+          <span style={{fontSize:13,color:"#888",marginRight:4}}>排序:</span>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+            style={{padding:"4px 8px",borderRadius:4,border:"1px solid #d9d9d9"}}>
+            <option value="installs">最多安装</option>
+            <option value="rating">最高评分</option>
+            <option value="name">名称排序</option>
+          </select>
+          <span style={{fontSize:13,color:"#888"}}>共 {filtered.length} 个技能</span>
+        </div>
+
+        {/* 技能卡片网格 */}
+        {filtered.length === 0 ? (
+          <div className="empty">
+            <div style={{fontSize:48,marginBottom:16}}>🔍</div>
+            <p>未找到匹配技能, 试试其他关键词</p>
+          </div>
+        ) : (
+          <div className="card-grid">
+            {filtered.map(skill => (
+              <SkillCard key={skill.id} skill={skill} onClick={setSelectedSkill} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 详情弹窗 */}
+      {selectedSkill && <DetailModal skill={selectedSkill} onClose={() => setSelectedSkill(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.render(<App />, document.getElementById("root"));
+</script>
+</body>
+</html>

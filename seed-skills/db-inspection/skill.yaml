@@ -1,0 +1,42 @@
+skill:
+  id: "db-inspection-assistant"
+  name: "数据库智能巡检助手"
+  version: "1.2.0"
+  category: "智能运维"
+  tags: ["数据库", "巡检", "告警", "MySQL", "Oracle", "PostgreSQL"]
+  summary: "基于 Zabbix + CMDB 自动执行数据库健康检查, 生成巡检报告"
+  description: |
+    通过 MCP 协议对接 Zabbix 监控与 CMDB 配置库,
+    支持 MySQL/Oracle/PostgreSQL/达梦等多种数据库的每日自动巡检。
+    检查项: CPU/内存/磁盘使用率, 连接池状态, 慢查询分析, 主从复制延迟。
+  types:
+    - mcp-server
+  endpoint:
+    type: mcp
+    url: "http://skill-runner:8081/db-inspection/mcp"
+    protocol: "MCP/2024-11-05"
+  author:
+    name: "数据库管理团队"
+    department: "信息科技部-基础架构中心"
+  stability: "stable"
+  permissions:
+    - resource: "cmdb:host:read"
+    - resource: "zabbix:metric:read"
+    - resource: "database:metadata:read"
+  interface:
+    inputs:
+      - name: "target_db"
+        type: "string"
+        required: true
+        description: "目标数据库实例名称"
+      - name: "check_scope"
+        type: "enum"
+        values: ["full", "performance", "security", "capacity"]
+        default: "full"
+    outputs:
+      - name: "report"
+        type: "markdown"
+      - name: "score"
+        type: "number"
+      - name: "issues"
+        type: "array"
