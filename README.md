@@ -25,6 +25,18 @@ cd frontend && npm install && npm start
 > db-inspection / log-desensitization / alert-convergence / requirement-analysis。
 > 后端网关通过 HTTP 转发 (JSON-RPC over MCP/2024-11-05) 真实调用技能。
 
+## 一键启动 (比赛演示)
+
+```bash
+# 双击 start-demo.bat 即可: Docker → 后端 → 前端 → 公网隧道 → 打印访问地址
+start-demo.bat
+
+# 停止全部服务
+stop-all.bat
+```
+
+启动后会自动创建公网隧道 (localhost.run / Cloudflare 自动回退), 手机/评委可直接访问。
+
 ## 项目结构
 
 ```
