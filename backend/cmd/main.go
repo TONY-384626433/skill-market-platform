@@ -16,6 +16,7 @@ import (
 	"github.com/jjbank/skill-market/internal/handler"
 	"github.com/jjbank/skill-market/internal/middleware"
 	"github.com/jjbank/skill-market/internal/service"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ============================================================
@@ -50,6 +51,13 @@ func main() {
 	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)`); err != nil {
 		log.Printf("⚠ 补充 users.phone 列失败(可忽略): %v", err)
 	}
+	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`); err != nil {
+		log.Printf("⚠ 补充 users.password_hash 列失败: %v", err)
+	}
+	demoHash, _ := bcrypt.GenerateFromPassword([]byte("demo"), bcrypt.DefaultCost)
+	if _, err := db.Exec(`UPDATE users SET password_hash=$1 WHERE username IN ('admin','zhangsan','lisi','wangwu','zhaoliu') AND COALESCE(password_hash,'')=''`, string(demoHash)); err != nil {
+		log.Printf("⚠ 初始化演示账号密码失败: %v", err)
+	}
 
 	// 初始化服务
 	skillSvc := service.NewSkillService(db, cfg)
@@ -58,6 +66,9 @@ func main() {
 
 	// 设置 Gin
 	r := gin.Default()
+	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
+		log.Fatalf("配置可信代理失败: %v", err)
+	}
 	r.Use(middleware.CORSMiddleware())
 
 	// ============================================================
@@ -92,11 +103,11 @@ func main() {
 		}
 
 		// TODO: 对接 LDAP 验证 — 简化实现
-		var userID, role, dept string
-		_ = db.QueryRow(`SELECT id, role, COALESCE(department,'') FROM users WHERE username=$1`,
-			req.Username).Scan(&userID, &role, &dept)
+		var userID, role, dept, passwordHash string
+		_ = db.QueryRow(`SELECT id, role, COALESCE(department,''), COALESCE(password_hash,'') FROM users WHERE username=$1`,
+			req.Username).Scan(&userID, &role, &dept, &passwordHash)
 
-		if userID == "" {
+		if userID == "" || passwordHash == "" || bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户名或密码错误"})
 			return
 		}
@@ -148,7 +159,7 @@ func main() {
 			Target      string `json:"target" binding:"required"`  // 手机号或邮箱
 			Code        string `json:"code" binding:"required"`
 			Username    string `json:"username" binding:"required,min=3,max=32"`
-			Password    string `json:"password"`
+			Password    string `json:"password" binding:"required,min=6"`
 			DisplayName string `json:"display_name"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -190,18 +201,22 @@ func main() {
 			displayName = req.Username
 		}
 
-		// TODO: 生产环境请对接 LDAP / 密码加密存储
+		passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败"})
+			return
+		}
 		var userID string
 		if req.Channel == "phone" {
-			err := db.QueryRow(`INSERT INTO users (username, display_name, phone, department, role) VALUES ($1,$2,$3,$4,'user') RETURNING id`,
-				req.Username, displayName, req.Target, "").Scan(&userID)
+			err := db.QueryRow(`INSERT INTO users (username, display_name, phone, password_hash, department, role) VALUES ($1,$2,$3,$4,$5,'user') RETURNING id`,
+				req.Username, displayName, req.Target, string(passwordHash), "").Scan(&userID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败: " + err.Error()})
 				return
 			}
 		} else {
-			err := db.QueryRow(`INSERT INTO users (username, display_name, email, department, role) VALUES ($1,$2,$3,$4,'user') RETURNING id`,
-				req.Username, displayName, req.Target, "").Scan(&userID)
+			err := db.QueryRow(`INSERT INTO users (username, display_name, email, password_hash, department, role) VALUES ($1,$2,$3,$4,$5,'user') RETURNING id`,
+				req.Username, displayName, req.Target, string(passwordHash), "").Scan(&userID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败: " + err.Error()})
 				return
@@ -367,9 +382,6 @@ func main() {
 	auth := r.Group("/api/v1")
 	auth.Use(middleware.JWTAuth(cfg.JWT.Secret))
 	{
-		// 技能管理
-		auth.POST("/skills", skillHandler.CreateSkill)
-
 		// 安装管理
 		auth.POST("/skills/:id/install", skillHandler.InstallSkill)
 		auth.GET("/skills/my/installations", skillHandler.GetMyInstallations)
@@ -378,11 +390,23 @@ func main() {
 		// 评价
 		auth.POST("/skills/:id/rate", skillHandler.RateSkill)
 
-		// 审计日志
-		auth.GET("/skills/audit-logs", skillHandler.GetAuditLogs)
-
 		// 技能调用网关
 		auth.POST("/gateway/invoke", gatewayHandler.InvokeSkill)
+
+		developer := auth.Group("")
+		developer.Use(middleware.RequireRole("developer", "admin"))
+		{
+			developer.POST("/skills", skillHandler.CreateSkill)
+			developer.GET("/skills/my/submissions", skillHandler.GetMySubmissions)
+		}
+
+		admin := auth.Group("/admin")
+		admin.Use(middleware.RequireRole("admin"))
+		{
+			admin.GET("/review-queue", skillHandler.GetReviewQueue)
+			admin.POST("/skills/:id/review", skillHandler.ReviewSkill)
+			admin.GET("/audit-logs", skillHandler.GetAuditLogs)
+		}
 	}
 
 	// 启动服务

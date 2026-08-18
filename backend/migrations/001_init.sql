@@ -18,6 +18,7 @@ CREATE TABLE users (
     display_name    VARCHAR(256) NOT NULL,
     email           VARCHAR(256),
     phone           VARCHAR(32),
+	password_hash   TEXT,
     department      VARCHAR(256),
     role            VARCHAR(64) NOT NULL DEFAULT 'user',  -- user / developer / admin
     avatar_url      VARCHAR(512),

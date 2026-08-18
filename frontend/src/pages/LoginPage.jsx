@@ -1,454 +1,143 @@
-// ============================================================
-// 登录/注册页 — 科技感重构版
-// 支持: 账号密码 / 手机验证码 / 邮箱验证码 / 微信 / QQ / 扫码 / 游客
-// ============================================================
-import React, { useState, useContext, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, message, Typography, Modal, Spin } from 'antd';
+import React, { useContext, useEffect, useState } from 'react';
+import { Alert, App as AntApp, Button, Form, Input, Segmented, Tabs } from 'antd';
 import {
-  UserOutlined, LockOutlined, LoginOutlined, SafetyCertificateOutlined,
-  WechatOutlined, QqOutlined, MailOutlined, QrcodeOutlined,
-  MobileOutlined, SmileOutlined, CheckCircleOutlined,
-  IdcardOutlined, ThunderboltOutlined
+  ApiOutlined, AuditOutlined, BankOutlined, CheckCircleFilled, CodeOutlined,
+  IdcardOutlined, KeyOutlined, LockOutlined, LoginOutlined, MobileOutlined,
+  SafetyCertificateOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
-import {
-  login, phoneLogin, register, sendCode, oauthLogin, quickLogin
-} from '../services/api';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { UserContext } from '../App';
-import QrMock from '../components/QrMock';
+import { login, phoneLogin, quickLogin, register, sendCode } from '../services/api';
 
-const { Text } = Typography;
-
-// 保存登录态
-const saveAuth = (res) => {
-  localStorage.setItem('skillhub_token', res.token);
-  localStorage.setItem('skillhub_user', JSON.stringify(res.user));
-  return res.user;
-};
+const demoAccounts = [
+  { username: 'admin', role: '平台管理员', scope: '审核与治理', icon: AuditOutlined },
+  { username: 'zhangsan', role: '技能开发者', scope: '发布与调试', icon: CodeOutlined },
+  { username: 'zhaoliu', role: '业务用户', scope: '安装与调用', icon: TeamOutlined },
+];
 
 export default function LoginPage() {
-  const navigate = useNavigate();
+  const { message } = AntApp.useApp();
   const { setUser } = useContext(UserContext);
-
-  const [tab, setTab] = useState('login');              // login / register
-  const [loginMode, setLoginMode] = useState('password'); // password / phone
-  const [regMode, setRegMode] = useState('phone');        // phone / email
-  const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState('');
-  const [countdown, setCountdown] = useState(0);
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scanState, setScanState] = useState('waiting'); // waiting / confirming / done
-  const countdownRef = useRef(null);
-
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loginForm] = Form.useForm();
-  const [regForm] = Form.useForm();
+  const [registerForm] = Form.useForm();
+  const [mode, setMode] = useState('password');
+  const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState('');
+  const [countdown, setCountdown] = useState(0);
 
-  // 验证码倒计时
   useEffect(() => {
-    if (countdown > 0) {
-      countdownRef.current = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    }
-    return () => clearTimeout(countdownRef.current);
+    if (!countdown) return undefined;
+    const timer = window.setInterval(() => setCountdown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
   }, [countdown]);
 
-  useEffect(() => {
-    return () => clearTimeout(countdownRef.current);
-  }, []);
+  const completeLogin = (response) => {
+    if (!response?.token || !response?.user) throw new Error('登录响应不完整');
+    localStorage.setItem('skillhub_token', response.token);
+    localStorage.setItem('skillhub_user', JSON.stringify(response.user));
+    setUser(response.user);
+    message.success(`欢迎进入 SkillHub，${response.user.display_name || response.user.username}`);
+    navigate(location.state?.from || '/', { replace: true });
+  };
 
-  const handleSendCode = async (channel, target) => {
-    if (!target) {
-      message.warning(channel === 'phone' ? '请先填写手机号' : '请先填写邮箱');
-      return;
-    }
+  const submitLogin = async (values) => {
+    setLoading(true);
     try {
-      const res = await sendCode(channel, target);
-      const tip = res.dev_code ? `验证码: ${res.dev_code}（演示环境直接显示）` : '验证码已发送';
-      message.success(tip);
-      if (res.dev_code) {
-        // 演示环境自动填充验证码
-        if (channel === 'phone') {
-          loginForm.setFieldsValue({ code: res.dev_code });
-          regForm.setFieldsValue({ code: res.dev_code });
-        } else {
-          regForm.setFieldsValue({ code: res.dev_code });
-        }
-      }
+      completeLogin(mode === 'password' ? await login(values.username, values.password) : await phoneLogin(values.phone, values.code));
+    } catch (requestError) { message.error(requestError.response?.data?.error || requestError.message || '登录失败'); }
+    finally { setLoading(false); }
+  };
+
+  const requestCode = async (target, channel = 'phone', form = loginForm) => {
+    if (!target) return message.warning(channel === 'phone' ? '请先输入手机号' : '请先输入邮箱');
+    try {
+      const response = await sendCode(channel, target);
       setCountdown(60);
-    } catch (e) {
-      message.error(e.response?.data?.error || '验证码发送失败');
-    }
+      if (response.dev_code) {
+        form.setFieldValue('code', response.dev_code);
+        message.success(`演示验证码：${response.dev_code}`);
+      } else message.success('验证码已发送');
+    } catch (requestError) { message.error(requestError.response?.data?.error || '验证码发送失败'); }
   };
 
-  // ============ 登录 ============
-  const onLogin = async (values) => {
+  const submitRegister = async (values) => {
     setLoading(true);
     try {
-      let res;
-      if (loginMode === 'phone') {
-        res = await phoneLogin(values.phone, values.code);
-      } else {
-        res = await login(values.username, values.password);
-      }
-      const user = saveAuth(res);
-      setUser(user);
-      message.success(`欢迎回来, ${user.username}!`);
-      navigate('/');
-    } catch (e) {
-      message.error(e.response?.data?.error || '登录失败, 请检查输入');
-    }
-    setLoading(false);
+      completeLogin(await register({ channel: 'email', target: values.email, code: values.code, username: values.username, password: values.password, display_name: values.display_name }));
+    } catch (requestError) { message.error(requestError.response?.data?.error || '注册失败'); }
+    finally { setLoading(false); }
   };
 
-  // ============ 注册 ============
-  const onRegister = async (values) => {
+  const guestLogin = async () => {
     setLoading(true);
-    try {
-      const res = await register({
-        channel: regMode,
-        target: regMode === 'phone' ? values.phone : values.email,
-        code: values.code,
-        username: values.username,
-        password: values.password,
-        display_name: values.nickname,
-      });
-      const user = saveAuth(res);
-      setUser(user);
-      message.success(`注册成功, 已自动登录! 欢迎 ${user.username} ⚡`);
-      navigate('/');
-    } catch (e) {
-      message.error(e.response?.data?.error || '注册失败');
-    }
-    setLoading(false);
+    try { completeLogin(await quickLogin('guest')); }
+    catch (requestError) { message.error(requestError.response?.data?.error || '访客登录失败'); }
+    finally { setLoading(false); }
   };
 
-  // ============ 第三方快捷登录 ============
-  const onOAuth = async (provider) => {
-    setOauthLoading(provider);
-    try {
-      const nickname = provider === 'wechat' ? '微信用户' : 'QQ用户';
-      const res = await oauthLogin(provider, nickname);
-      const user = saveAuth(res);
-      setUser(user);
-      message.success(`欢迎回来, ${user.username}!`);
-      navigate('/');
-    } catch (e) {
-      message.error('第三方登录失败');
-    }
-    setOauthLoading('');
+  const demoLogin = async (username) => {
+    setDemoLoading(username);
+    try { completeLogin(await login(username, 'demo')); }
+    catch (requestError) { message.error(requestError.response?.data?.error || '演示账号登录失败'); }
+    finally { setDemoLoading(''); }
   };
 
-  // ============ 游客快捷登录 ============
-  const onGuestLogin = async () => {
-    setOauthLoading('guest');
-    try {
-      const res = await quickLogin('guest');
-      const user = saveAuth(res);
-      setUser(user);
-      message.success('已以访客身份进入, 可随时注册完整账号');
-      navigate('/');
-    } catch (e) {
-      message.error('访客登录失败');
-    }
-    setOauthLoading('');
-  };
+  const loginPanel = (
+    <div>
+      <Segmented block value={mode} onChange={setMode} options={[{ value: 'password', label: '账号密码' }, { value: 'phone', label: '手机验证' }]} />
+      <Form form={loginForm} layout="vertical" onFinish={submitLogin} requiredMark={false} className="login-form">
+        {mode === 'password' ? <>
+          <Form.Item name="username" label="企业账号" rules={[{ required: true, message: '请输入企业账号' }]}><Input size="large" prefix={<UserOutlined />} placeholder="请输入用户名" autoComplete="username" /></Form.Item>
+          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}><Input.Password size="large" prefix={<LockOutlined />} placeholder="请输入密码" autoComplete="current-password" /></Form.Item>
+          <div className="login-options"><span><SafetyCertificateOutlined /> 仅限已授权企业账号</span><Button type="link" onClick={() => message.info('请联系企业 IAM 管理员重置密码')}>忘记密码</Button></div>
+        </> : <>
+          <Form.Item name="phone" label="手机号" rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1\d{10}$/, message: '手机号格式不正确' }]}><Input size="large" prefix={<MobileOutlined />} maxLength={11} placeholder="企业预留手机号" /></Form.Item>
+          <Form.Item label="验证码" required><div className="code-field"><Form.Item name="code" noStyle rules={[{ required: true, message: '请输入验证码' }]}><Input size="large" prefix={<IdcardOutlined />} maxLength={6} placeholder="6 位验证码" /></Form.Item><Button size="large" disabled={countdown > 0} onClick={() => requestCode(loginForm.getFieldValue('phone'))}>{countdown ? `${countdown}s` : '获取验证码'}</Button></div></Form.Item>
+        </>}
+        <Button className="login-submit" type="primary" size="large" block htmlType="submit" icon={<LoginOutlined />} loading={loading}>安全登录</Button>
+      </Form>
+      <div className="login-divider"><span>或选择演示身份快速进入</span></div>
+      <div className="login-account-grid">
+        {demoAccounts.map(({ username, role, scope, icon: Icon }) => <button key={username} type="button" onClick={() => demoLogin(username)} disabled={Boolean(demoLoading)}><span><Icon /></span><strong>{role}</strong><small>{demoLoading === username ? '正在进入...' : scope}</small></button>)}
+      </div>
+      <Button className="guest-button" type="text" block loading={loading} onClick={guestLogin}>以访客身份浏览市场</Button>
+    </div>
+  );
 
-  // ============ 扫码登录 ============
-  const openScan = () => {
-    setScanState('waiting');
-    setScanOpen(true);
-  };
-
-  const mockScan = async () => {
-    if (scanState === 'done') return;
-    setScanState('confirming');
-    setTimeout(async () => {
-      setScanState('done');
-      try {
-        const res = await quickLogin('scan');
-        const user = saveAuth(res);
-        setUser(user);
-        message.success('扫码登录成功!');
-        setTimeout(() => { setScanOpen(false); navigate('/'); }, 600);
-      } catch (e) {
-        message.error('扫码登录失败');
-        setScanState('waiting');
-      }
-    }, 1300);
-  };
-
-  const scanStatusText = {
-    waiting: '请使用手机扫码登录',
-    confirming: '已扫码, 请在手机上确认...',
-    done: '登录成功, 正在进入...',
-  };
+  const registerPanel = (
+    <Form form={registerForm} layout="vertical" onFinish={submitRegister} requiredMark={false} className="login-form register-form">
+      <Alert type="info" showIcon message="体验环境注册" description="生产环境账号由企业统一身份系统同步。" />
+      <div className="form-grid two"><Form.Item name="display_name" label="姓名" rules={[{ required: true }]}><Input prefix={<UserOutlined />} placeholder="展示姓名" /></Form.Item><Form.Item name="username" label="用户名" rules={[{ required: true }, { min: 3 }]}><Input prefix={<KeyOutlined />} placeholder="至少 3 个字符" /></Form.Item></div>
+      <Form.Item name="email" label="企业邮箱" rules={[{ required: true }, { type: 'email' }]}><Input placeholder="name@jjbank.com" /></Form.Item>
+      <Form.Item label="邮箱验证码" required><div className="code-field"><Form.Item name="code" noStyle rules={[{ required: true }]}><Input maxLength={6} placeholder="6 位验证码" /></Form.Item><Button disabled={countdown > 0} onClick={() => requestCode(registerForm.getFieldValue('email'), 'email', registerForm)}>{countdown ? `${countdown}s` : '获取验证码'}</Button></div></Form.Item>
+      <Form.Item name="password" label="密码" rules={[{ required: true }, { min: 6 }]}><Input.Password prefix={<LockOutlined />} placeholder="至少 6 位" /></Form.Item>
+      <Button type="primary" size="large" block htmlType="submit" loading={loading}>注册并进入</Button>
+    </Form>
+  );
 
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'center', alignItems: 'center',
-      minHeight: 'calc(100vh - 140px)', position: 'relative', padding: '24px 0'
-    }}>
-      {/* 光环装饰 */}
-      <div style={{
-        position: 'absolute', width: 460, height: 460, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(34,211,238,0.15), transparent 65%)',
-        top: '6%', left: '12%', filter: 'blur(10px)', animation: 'floaty 7s ease-in-out infinite'
-      }} />
-      <div style={{
-        position: 'absolute', width: 420, height: 420, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(139,92,246,0.15), transparent 65%)',
-        bottom: '6%', right: '12%', filter: 'blur(10px)', animation: 'floaty 9s ease-in-out infinite reverse'
-      }} />
-
-      <div className="gradient-border fade-up" style={{ width: 500, padding: 2, borderRadius: 20 }}>
-        <div style={{
-          background: 'rgba(9, 14, 32, 0.94)', backdropFilter: 'blur(24px)',
-          borderRadius: 19, padding: '36px 40px 30px', position: 'relative', overflow: 'hidden'
-        }}>
-          {/* 顶部光条 */}
-          <div style={{
-            position: 'absolute', top: 0, left: '15%', right: '15%', height: 2,
-            background: 'linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent)',
-            boxShadow: '0 0 24px rgba(34,211,238,0.7)'
-          }} />
-
-          {/* Logo */}
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: 16, margin: '0 auto 14px',
-              background: 'var(--gradient-main)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 28, boxShadow: 'var(--shadow-glow-cyan)', animation: 'logoPulse 3s ease infinite'
-            }}>⚡</div>
-            <h2 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px', color: 'var(--text-primary)', letterSpacing: 1 }}>
-              SKILL <span className="gradient-text">NEXUS</span>
-            </h2>
-            <Text style={{ color: 'var(--text-dim)', fontSize: 12, letterSpacing: 2, fontFamily: 'var(--font-mono)' }}>
-              私域 AI 技能平台 · 统一身份认证
-            </Text>
-          </div>
-
-          {/* ============ Tabs ============ */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 22 }}>
-            {[{ k: 'login', label: '登录' }, { k: 'register', label: '注册账号' }].map((t) => (
-              <button
-                key={t.k}
-                onClick={() => { setTab(t.k); setLoading(false); }}
-                className={`auth-mode-btn ${tab === t.k ? 'active' : ''}`}
-                style={{ flex: 1 }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* ============ 登录面板 ============ */}
-          {tab === 'login' && (
-            <div>
-              {/* 方式切换 */}
-              <div className="auth-mode-switch">
-                <button className={`auth-mode-btn ${loginMode === 'password' ? 'active' : ''}`} onClick={() => setLoginMode('password')}>
-                  <LockOutlined /> 账号密码
-                </button>
-                <button className={`auth-mode-btn ${loginMode === 'phone' ? 'active' : ''}`} onClick={() => setLoginMode('phone')}>
-                  <MobileOutlined /> 手机验证码
-                </button>
-              </div>
-
-              <Form form={loginForm} onFinish={onLogin} size="large" className="nexus-form">
-                {loginMode === 'password' ? (
-                  <>
-                    <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-                      <Input prefix={<UserOutlined style={{ color: 'var(--cyan)' }} />} placeholder="用户名" />
-                    </Form.Item>
-                    <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-                      <Input.Password prefix={<LockOutlined style={{ color: 'var(--cyan)' }} />} placeholder="密码" />
-                    </Form.Item>
-                  </>
-                ) : (
-                  <>
-                    <Form.Item name="phone" rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1\d{10}$/, message: '手机号格式不正确' }]}>
-                      <Input prefix={<MobileOutlined style={{ color: 'var(--cyan)' }} />} placeholder="手机号" maxLength={11} />
-                    </Form.Item>
-                    <Form.Item name="code" rules={[{ required: true, message: '请输入验证码' }]}>
-                      <div className="code-input">
-                        <Input prefix={<IdcardOutlined style={{ color: 'var(--cyan)' }} />} placeholder="6 位验证码" maxLength={6} />
-                        <Button
-                          className="code-btn"
-                          disabled={countdown > 0}
-                          onClick={() => handleSendCode('phone', loginForm.getFieldValue('phone'))}
-                        >
-                          {countdown > 0 ? `${countdown}s 后重发` : '获取验证码'}
-                        </Button>
-                      </div>
-                    </Form.Item>
-                  </>
-                )}
-                <Form.Item style={{ marginBottom: 8 }}>
-                  <Button
-                    className="glow-btn"
-                    htmlType="submit"
-                    block
-                    loading={loading}
-                    icon={<LoginOutlined />}
-                    style={{ height: 46, fontSize: 15 }}
-                  >
-                    {loginMode === 'phone' ? '验证码登录' : '登录'}
-                  </Button>
-                </Form.Item>
-              </Form>
-
-              {/* 其他登录方式 */}
-              <div className="oauth-divider">其他登录方式</div>
-              <div className="oauth-row">
-                <div style={{ textAlign: 'center' }}>
-                  <div className="oauth-btn wechat" onClick={() => onOAuth('wechat')} title="微信登录">
-                    {oauthLoading === 'wechat' ? <Spin size="small" /> : <WechatOutlined />}
-                  </div>
-                  <div className="oauth-label">微信</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div className="oauth-btn qq" onClick={() => onOAuth('qq')} title="QQ 登录">
-                    {oauthLoading === 'qq' ? <Spin size="small" /> : <QqOutlined />}
-                  </div>
-                  <div className="oauth-label">QQ</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div className="oauth-btn mail" onClick={() => { setTab('register'); setRegMode('email'); }} title="邮箱注册">
-                    <MailOutlined />
-                  </div>
-                  <div className="oauth-label">邮箱</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div className="oauth-btn scan" onClick={openScan} title="扫码登录">
-                    <QrcodeOutlined />
-                  </div>
-                  <div className="oauth-label">扫码</div>
-                </div>
-              </div>
-
-              <div className="quick-guest" onClick={onGuestLogin}>
-                {oauthLoading === 'guest' ? <Spin size="small" style={{ marginRight: 6 }} /> : <SmileOutlined style={{ marginRight: 6 }} />}
-                游客快捷体验 · 无需注册
-              </div>
-            </div>
-          )}
-
-          {/* ============ 注册面板 ============ */}
-          {tab === 'register' && (
-            <div>
-              <div className="auth-mode-switch">
-                <button className={`auth-mode-btn ${regMode === 'phone' ? 'active' : ''}`} onClick={() => setRegMode('phone')}>
-                  <MobileOutlined /> 手机号注册
-                </button>
-                <button className={`auth-mode-btn ${regMode === 'email' ? 'active' : ''}`} onClick={() => setRegMode('email')}>
-                  <MailOutlined /> 邮箱注册
-                </button>
-              </div>
-
-              <Form form={regForm} onFinish={onRegister} size="large" className="nexus-form">
-                <Form.Item name="nickname" rules={[{ required: true, message: '请输入昵称' }]}>
-                  <Input prefix={<SmileOutlined style={{ color: 'var(--cyan)' }} />} placeholder="昵称（展示用）" maxLength={20} />
-                </Form.Item>
-                <Form.Item name="username" rules={[{ required: true, min: 3, max: 20, message: '用户名 3-20 个字符' }]}>
-                  <Input prefix={<UserOutlined style={{ color: 'var(--cyan)' }} />} placeholder="用户名（登录用）" />
-                </Form.Item>
-                {regMode === 'phone' ? (
-                  <Form.Item name="phone" rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1\d{10}$/, message: '手机号格式不正确' }]}>
-                    <Input prefix={<MobileOutlined style={{ color: 'var(--cyan)' }} />} placeholder="手机号" maxLength={11} />
-                  </Form.Item>
-                ) : (
-                  <Form.Item name="email" rules={[{ required: true, message: '请输入邮箱' }, { type: 'email', message: '邮箱格式不正确' }]}>
-                    <Input prefix={<MailOutlined style={{ color: 'var(--cyan)' }} />} placeholder="邮箱地址" />
-                  </Form.Item>
-                )}
-                <Form.Item name="code" rules={[{ required: true, message: '请输入验证码' }]}>
-                  <div className="code-input">
-                    <Input prefix={<IdcardOutlined style={{ color: 'var(--cyan)' }} />} placeholder="6 位验证码" maxLength={6} />
-                    <Button
-                      className="code-btn"
-                      disabled={countdown > 0}
-                      onClick={() => handleSendCode(
-                        regMode,
-                        regMode === 'phone' ? regForm.getFieldValue('phone') : regForm.getFieldValue('email')
-                      )}
-                    >
-                      {countdown > 0 ? `${countdown}s 后重发` : '获取验证码'}
-                    </Button>
-                  </div>
-                </Form.Item>
-                <Form.Item name="password" rules={[{ required: true, min: 6, message: '密码至少 6 位' }]}>
-                  <Input.Password prefix={<LockOutlined style={{ color: 'var(--cyan)' }} />} placeholder="设置密码（至少 6 位）" />
-                </Form.Item>
-                <Form.Item style={{ marginBottom: 8 }}>
-                  <Button
-                    className="glow-btn glow-btn-violet"
-                    htmlType="submit"
-                    block
-                    loading={loading}
-                    icon={<ThunderboltOutlined />}
-                    style={{ height: 46, fontSize: 15 }}
-                  >
-                    注册并自动登录
-                  </Button>
-                </Form.Item>
-              </Form>
-
-              <Text style={{ color: 'var(--text-dim)', fontSize: 11.5, display: 'block', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>
-                <SafetyCertificateOutlined /> 注册即代表同意《用户协议》与《隐私政策》 · 也可使用微信 / QQ 快捷注册
-              </Text>
-            </div>
-          )}
-
-          {/* 底部安全说明 */}
-          <div style={{ textAlign: 'center', marginTop: 20 }}>
-            <Text style={{ color: 'var(--text-dim)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-              <SafetyCertificateOutlined /> 对接九江银行 LDAP 统一认证 · TLS 加密通道
-            </Text>
-          </div>
+    <div className="login-page">
+      <section className="login-context">
+        <div className="login-context-head"><span className="login-bank-mark"><BankOutlined /></span><div><strong>九江银行 SkillHub</strong><small>AI CAPABILITY OPERATING SYSTEM</small></div><em><i /> SECURE</em></div>
+        <div className="login-context-copy"><p className="eyebrow"><span />企业 AI 能力控制台</p><h1>连接可信能力<br />驱动业务执行</h1><p>统一身份、统一网关、统一审计，让每一次 AI 调用都有边界、有凭证、可追溯。</p></div>
+        <div className="access-map" aria-hidden="true">
+          <div className="access-core"><BankOutlined /><strong>SkillHub</strong><small>TRUST CORE</small></div>
+          <span className="access-line line-one" /><span className="access-line line-two" /><span className="access-line line-three" />
+          <div className="access-node node-auth"><SafetyCertificateOutlined /><span>IAM</span></div>
+          <div className="access-node node-api"><ApiOutlined /><span>API</span></div>
+          <div className="access-node node-audit"><AuditOutlined /><span>AUDIT</span></div>
+          <i className="access-pulse pulse-one" /><i className="access-pulse pulse-two" /><i className="access-pulse pulse-three" />
         </div>
-      </div>
-
-      {/* ============ 扫码登录 Modal ============ */}
-      <Modal
-        className="nexus-modal"
-        open={scanOpen}
-        onCancel={() => setScanOpen(false)}
-        footer={null}
-        width={360}
-        title={<span style={{ color: 'var(--cyan-bright)' }}><QrcodeOutlined /> 扫码登录</span>}
-      >
-        <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
-          <QrMock />
-          <div style={{ marginTop: 18, minHeight: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-            {scanState === 'confirming' ? (
-              <>
-                <Spin />
-                <Text style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                  已扫码, 请在手机上确认...
-                </Text>
-              </>
-            ) : scanState === 'done' ? (
-              <>
-                <CheckCircleOutlined style={{ color: 'var(--green)', fontSize: 18 }} />
-                <Text style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                  登录成功, 正在进入...
-                </Text>
-              </>
-            ) : (
-              <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
-                {scanStatusText.waiting}
-              </Text>
-            )}
-          </div>
-          {scanState === 'waiting' && (
-            <Button className="glow-btn" style={{ marginTop: 14, height: 40, padding: '0 28px' }} onClick={mockScan}>
-              模拟扫码成功
-            </Button>
-          )}
-          <div style={{ marginTop: 14, color: 'var(--text-dim)', fontSize: 11.5, fontFamily: 'var(--font-mono)' }}>
-            演示环境: 扫码后自动完成登录 · 二维码 60s 内有效
-          </div>
-        </div>
-      </Modal>
+        <div className="login-assurance"><span><CheckCircleFilled />企业身份认证</span><span><CheckCircleFilled />访问凭据隔离</span><span><CheckCircleFilled />全链路审计</span></div>
+      </section>
+      <section className="login-panel">
+        <div className="login-mobile-brand"><span><BankOutlined /></span><div><strong>SkillHub</strong><small>九江银行 AI 能力中心</small></div></div>
+        <div className="login-panel-heading"><span className="login-panel-icon"><LockOutlined /></span><div><h2>进入企业工作区</h2><p>身份验证通过后加载对应角色权限</p></div><em><i /> 服务在线</em></div>
+        <Tabs items={[{ key: 'login', label: '企业登录', children: loginPanel }, { key: 'register', label: '体验账号注册', children: registerPanel }]} />
+        <footer><SafetyCertificateOutlined /> TLS 加密连接 · 登录行为已纳入安全审计</footer>
+      </section>
     </div>
   );
 }

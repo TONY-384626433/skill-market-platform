@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
-title SKILL NEXUS 停止全部服务
-echo 正在停止 SKILL NEXUS 全部服务...
+title SkillHub 停止全部服务
+echo 正在停止 SkillHub 全部服务...
 
 REM 停止隧道 (ssh / cloudflared)
 taskkill /IM cloudflared.exe /F >nul 2>&1

@@ -1,131 +1,101 @@
-// ============================================================
-// 管理后台 — 科技感重构版
-// ============================================================
-import React, { useState, useEffect } from 'react';
-import { Table, Tag, Typography } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { Alert, App as AntApp, Button, Empty, Input, Modal, Skeleton, Table, Tabs, Tag } from 'antd';
 import {
-  BarChartOutlined, AuditOutlined,
-  RiseOutlined, TeamOutlined, ApiOutlined, StarOutlined,
-  DatabaseOutlined, WarningOutlined
+  CheckOutlined, ClockCircleOutlined, FileSearchOutlined, ReloadOutlined,
+  SafetyCertificateOutlined, StopOutlined, WarningOutlined,
 } from '@ant-design/icons';
-import { getStats, getAuditLogs } from '../services/api';
-import useCountUp from '../components/useCountUp';
+import { getAuditLogs, getReviewQueue, getStats, reviewSkill } from '../services/api';
+import { formatDate, formatNumber } from '../utils/format';
 
-const { Text } = Typography;
-
-// ============ 发光统计卡 ============
-function AdminStatCard({ title, value, suffix, gradient, icon, delay }) {
-  const animated = useCountUp(value);
-  return (
-    <div className="glass-card stat-card fade-up" style={{ animationDelay: `${delay}s` }}>
-      <div className="stat-icon" style={{ background: gradient }}>{icon}</div>
-      <div className="stat-title">{title.toUpperCase()}</div>
-      <div className="stat-value" style={{ background: gradient, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-        {typeof value === 'number' ? animated : value}
-        {suffix && <span style={{ fontSize: 15, marginLeft: 4, WebkitTextFillColor: 'var(--text-dim)' }}>{suffix}</span>}
-      </div>
-    </div>
-  );
+function GovernanceMetric({ label, value, suffix, note, tone = '' }) {
+  return <div className={`governance-metric ${tone}`}><span>{label}</span><strong>{formatNumber(value)}{suffix && <small>{suffix}</small>}</strong><em>{note}</em></div>;
 }
 
 export default function AdminPage() {
+  const { message } = AntApp.useApp();
   const [stats, setStats] = useState({});
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [queue, setQueue] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState(null);
+  const [verdict, setVerdict] = useState('approve');
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    getStats().then(res => setStats(res.data)).catch(() => {});
-    fetchAuditLogs();
-  }, []);
-
-  const fetchAuditLogs = async (userId = '') => {
+  const load = async () => {
     setLoading(true);
-    try {
-      const res = await getAuditLogs({ user_id: userId, page: 1, page_size: 50 });
-      setAuditLogs(res.data || []);
-      setAuditTotal(res.total || 0);
-    } catch (e) {}
+    const [statResult, queueResult, logResult] = await Promise.allSettled([
+      getStats(), getReviewQueue(), getAuditLogs({ page: 1, page_size: 50 }),
+    ]);
+    if (statResult.status === 'fulfilled') setStats(statResult.value?.data || {});
+    if (queueResult.status === 'fulfilled') setQueue(Array.isArray(queueResult.value?.data) ? queueResult.value.data : []);
+    if (logResult.status === 'fulfilled') setLogs(Array.isArray(logResult.value?.data) ? logResult.value.data : []);
+    if ([statResult, queueResult, logResult].some((result) => result.status === 'rejected')) message.error('部分治理数据加载失败');
     setLoading(false);
   };
 
-  const auditColumns = [
-    {
-      title: 'TRACE ID', dataIndex: 'trace_id', key: 'trace_id', width: 150, ellipsis: true,
-      render: (text) => <Text style={{ color: 'var(--cyan-bright)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{text?.slice(0, 16)}...</Text>,
-    },
-    { title: '用户', dataIndex: 'user_id', key: 'user_id', width: 90 },
-    { title: '技能', dataIndex: 'skill_id', key: 'skill_id', width: 110, ellipsis: true },
-    {
-      title: '方法', dataIndex: 'method', key: 'method', width: 100,
-      render: (m) => <Tag className="nexus-tag nexus-tag-violet" style={{ fontFamily: 'var(--font-mono)' }}>{m}</Tag>,
-    },
-    {
-      title: '状态', dataIndex: 'response_status', key: 'status', width: 85,
-      render: (s) => s === 'success'
-        ? <Tag className="nexus-tag nexus-tag-green">● SUCCESS</Tag>
-        : <Tag className="nexus-tag nexus-tag-pink">● FAILED</Tag>,
-    },
-    {
-      title: '耗时', dataIndex: 'duration_ms', key: 'duration', width: 75,
-      render: (v) => <Text style={{ color: v > 2000 ? 'var(--gold)' : 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{v}ms</Text>,
-    },
-    { title: 'TOKEN', dataIndex: 'tokens_used', key: 'tokens', width: 70, render: (v) => <Text style={{ fontFamily: 'var(--font-mono)' }}>{v}</Text> },
-    {
-      title: 'PII', dataIndex: 'pii_detected', key: 'pii', width: 60,
-      render: (v) => v ? <Tag className="nexus-tag nexus-tag-pink">是</Tag> : <Tag className="nexus-tag nexus-tag-dim">否</Tag>,
-    },
-    { title: '来源 IP', dataIndex: 'source_ip', key: 'ip', width: 120, render: (v) => <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{v}</Text> },
-    { title: '时间', dataIndex: 'created_at', key: 'time', width: 160, render: (v) => <Text style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{v}</Text> },
+  useEffect(() => { load(); }, []);
+
+  const openReview = (skill, nextVerdict) => {
+    setReviewing(skill);
+    setVerdict(nextVerdict);
+    setComment('');
+  };
+
+  const submitReview = async () => {
+    if (verdict === 'reject' && !comment.trim()) return message.warning('驳回时必须填写整改原因');
+    setSubmitting(true);
+    try {
+      await reviewSkill(reviewing.id, { verdict, comment: comment.trim() });
+      message.success(verdict === 'approve' ? '技能已通过并发布' : '技能已驳回');
+      setReviewing(null);
+      await load();
+    } catch (requestError) { message.error(requestError.response?.data?.error || '审核提交失败'); }
+    finally { setSubmitting(false); }
+  };
+
+  const queueColumns = [
+    { title: '技能', dataIndex: 'name', key: 'name', minWidth: 220, render: (value, row) => <div className="table-primary"><span className="table-icon"><FileSearchOutlined /></span><div><strong>{value}</strong><small>{row.skill_key} · v{row.version}</small></div></div> },
+    { title: '分类', dataIndex: 'category', key: 'category', width: 110 },
+    { title: '形态', dataIndex: 'skill_type', key: 'skill_type', width: 90, render: (value) => <Tag>{value?.toUpperCase()}</Tag> },
+    { title: '提交人', dataIndex: 'author_name', key: 'author_name', width: 110 },
+    { title: '提交时间', dataIndex: 'created_at', key: 'created_at', width: 150, render: (value) => formatDate(value, true) },
+    { title: '简介', dataIndex: 'summary', key: 'summary', ellipsis: true },
+    { title: '操作', key: 'actions', width: 180, fixed: 'right', render: (_, row) => <div className="table-actions"><Button type="link" icon={<CheckOutlined />} onClick={() => openReview(row, 'approve')}>通过</Button><Button type="link" danger icon={<StopOutlined />} onClick={() => openReview(row, 'reject')}>驳回</Button></div> },
+  ];
+
+  const logColumns = [
+    { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 155, render: (value) => formatDate(value, true) },
+    { title: 'Trace ID', dataIndex: 'trace_id', key: 'trace_id', width: 180, render: (value) => <code className="trace-id">{value || '-'}</code> },
+    { title: '用户', dataIndex: 'user_id', key: 'user_id', width: 130, ellipsis: true },
+    { title: '技能', dataIndex: 'skill_id', key: 'skill_id', width: 120 },
+    { title: '方法', dataIndex: 'method', key: 'method', width: 110, render: (value) => <Tag>{value}</Tag> },
+    { title: '结果', dataIndex: 'response_status', key: 'response_status', width: 100, render: (value) => <Tag color={value === 'success' ? 'success' : 'error'}>{value === 'success' ? '成功' : '失败'}</Tag> },
+    { title: '耗时', dataIndex: 'duration_ms', key: 'duration_ms', width: 90, render: (value) => `${value || 0} ms` },
+    { title: 'PII', dataIndex: 'pii_detected', key: 'pii_detected', width: 90, render: (value) => value ? <Tag color="warning">已识别</Tag> : <span className="muted">无</span> },
   ];
 
   return (
-    <div>
-      <div className="fade-up">
-        <div className="page-title">
-          <span className="title-icon"><BarChartOutlined /></span>
-          管理后台
-        </div>
-        <p className="page-subtitle">
-          全链路运营监控 · 审计追踪 · 系统治理
-        </p>
-      </div>
+    <div className="page">
+      <section className="page-heading"><div><h1>平台治理</h1><p>管理发布审核、运行质量、合规风险和全链路调用审计。</p></div><Button icon={<ReloadOutlined />} onClick={load}>刷新数据</Button></section>
 
-      {/* ========== 核心指标 ========== */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <AdminStatCard title="技能总数" value={stats.total_skills || 0} suffix="个" icon={<ApiOutlined />} gradient="linear-gradient(135deg, #06b6d4, #3b82f6)" delay={0.05} />
-        <AdminStatCard title="累计安装" value={stats.total_installs || 0} suffix="次" icon={<RiseOutlined />} gradient="linear-gradient(135deg, #10b981, #06b6d4)" delay={0.12} />
-        <AdminStatCard title="月活用户" value={stats.monthly_active_users || 0} suffix="人" icon={<TeamOutlined />} gradient="linear-gradient(135deg, #8b5cf6, #d946ef)" delay={0.19} />
-        <AdminStatCard title="平均评分" value={stats.avg_rating || 0} suffix="/5" icon={<StarOutlined />} gradient="linear-gradient(135deg, #f59e0b, #ef4444)" delay={0.26} />
-      </div>
+      <section className="governance-metrics">
+        <GovernanceMetric label="待审核" value={stats.pending_reviews} suffix=" 项" note="需要人工复核" tone="warning" />
+        <GovernanceMetric label="调用成功率" value={stats.success_rate} suffix="%" note="近 30 日" tone="success" />
+        <GovernanceMetric label="平均响应" value={stats.avg_duration_ms} suffix=" ms" note="全量技能" />
+        <GovernanceMetric label="敏感信息识别" value={stats.pii_blocked} suffix=" 次" note="近 30 日" tone="danger" />
+      </section>
 
-      {/* ========== 审计日志 ========== */}
-      <div className="glass-card fade-up" style={{ padding: '8px 24px 24px', animationDelay: '0.3s' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 0 12px', borderBottom: '1px solid rgba(34,211,238,0.1)', marginBottom: 16 }}>
-          <h4 style={{ margin: 0, color: 'var(--cyan-bright)', fontWeight: 700 }}>
-            <AuditOutlined style={{ marginRight: 8, color: 'var(--cyan)' }} />
-            全链路审计日志
-          </h4>
-          <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-            <DatabaseOutlined /> 共 <span style={{ color: 'var(--cyan-bright)' }}>{auditTotal}</span> 条记录
-          </Text>
-        </div>
-        <Table
-          className="nexus-table"
-          dataSource={auditLogs}
-          columns={auditColumns}
-          rowKey="id"
-          loading={loading}
-          size="small"
-          scroll={{ x: 1200 }}
-          pagination={{
-            pageSize: 20,
-            className: 'nexus-pagination',
-            showSizeChanger: false,
-            showTotal: (t) => <Text style={{ color: 'var(--text-dim)', fontSize: 12 }}>共 {t} 条</Text>,
-          }}
-        />
-      </div>
+      <Alert className="governance-alert" type="info" showIcon icon={<SafetyCertificateOutlined />} message="治理策略运行中" description="所有技能发布需通过格式校验、安全扫描、功能验证和人工审核；运行调用会记录 Trace ID 与合规识别结果。" />
+
+      {loading ? <Skeleton active paragraph={{ rows: 10 }} /> : <Tabs className="workspace-tabs" items={[
+        { key: 'review', label: `审核队列 (${queue.length})`, children: <section className="workspace-section flush-section"><div className="section-heading"><div><h2>待人工复核</h2><p>核查功能边界、接入地址、权限声明与责任归属。</p></div></div><Table rowKey="id" dataSource={queue} columns={queueColumns} pagination={false} scroll={{ x: 1000 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前没有待审核技能" /> }} /></section> },
+        { key: 'audit', label: `调用审计 (${logs.length})`, children: <section className="workspace-section flush-section"><div className="section-heading"><div><h2>最近调用记录</h2><p>查看身份、技能、执行状态、耗时和敏感信息识别结果。</p></div></div><Table rowKey="id" dataSource={logs} columns={logColumns} pagination={{ pageSize: 15, showSizeChanger: false }} scroll={{ x: 1000 }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无调用审计记录" /> }} /></section> },
+      ]} />}
+
+      <Modal open={Boolean(reviewing)} title={verdict === 'approve' ? '确认通过并发布' : '驳回技能提交'} onCancel={() => setReviewing(null)} footer={[<Button key="cancel" onClick={() => setReviewing(null)}>取消</Button>, <Button key="submit" type="primary" danger={verdict === 'reject'} loading={submitting} onClick={submitReview}>{verdict === 'approve' ? '确认通过' : '确认驳回'}</Button>]}>
+        {reviewing && <div className="review-modal"><div className="review-target"><strong>{reviewing.name}</strong><span>{reviewing.skill_key} · v{reviewing.version}</span></div>{verdict === 'approve' ? <Alert type="success" showIcon message="通过后将立即进入技能市场，对全行用户可见。" /> : <Alert type="warning" showIcon icon={<WarningOutlined />} message="请提供可执行的整改意见，开发者将在发布记录中看到。" />}<label>{verdict === 'approve' ? '审核备注（选填）' : '驳回原因'}</label><Input.TextArea value={comment} onChange={(event) => setComment(event.target.value)} rows={4} maxLength={300} showCount placeholder={verdict === 'approve' ? '记录核验结论' : '说明未通过项和整改要求'} /><p><ClockCircleOutlined /> 审核结论会记录审核人和时间。</p></div>}
+      </Modal>
     </div>
   );
 }

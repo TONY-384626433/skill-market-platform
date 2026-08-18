@@ -33,4 +33,16 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('react-markdown') || id.includes('remark-') || id.includes('micromark')) return 'markdown';
+          if (id.includes('react-router') || id.includes('react-dom') || id.includes('/react/')) return 'react';
+          if (id.includes('axios')) return 'api-client';
+          return undefined;
+        },
+      },
+    },
+  },
 });

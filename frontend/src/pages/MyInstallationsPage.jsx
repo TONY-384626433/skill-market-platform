@@ -1,143 +1,82 @@
-// ============================================================
-// 我的技能 — 科技感重构版
-// ============================================================
-import React, { useState, useEffect, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { List, Button, message, Empty, Spin, Typography, Popconfirm, Tag } from 'antd';
+import React, { useEffect, useState } from 'react';
+import { App as AntApp, Button, Empty, Popconfirm, Skeleton, Table, Tag } from 'antd';
 import {
-  DeleteOutlined, EyeOutlined, KeyOutlined,
-  AppstoreOutlined, CheckCircleOutlined, StopOutlined
+  ApiOutlined, AppstoreAddOutlined, DeleteOutlined, EyeOutlined, KeyOutlined, SafetyCertificateOutlined,
 } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { getMyInstallations, revokeInstallation } from '../services/api';
-import { UserContext } from '../App';
-
-const { Title, Text } = Typography;
+import { formatDate } from '../utils/format';
 
 export default function MyInstallationsPage() {
+  const { message } = AntApp.useApp();
   const navigate = useNavigate();
-  const { user } = useContext(UserContext);
-  const [installations, setInstallations] = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [revoking, setRevoking] = useState('');
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (user) fetchInstallations();
-    else setLoading(false);
-  }, [user]);
-
-  const fetchInstallations = async () => {
+  const load = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await getMyInstallations();
-      setInstallations(res.data || []);
-    } catch (e) {
-      message.error('获取安装列表失败');
-    }
-    setLoading(false);
+      const response = await getMyInstallations();
+      if (!Array.isArray(response?.data)) throw new Error('安装列表数据格式异常');
+      setItems(response.data);
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || requestError.message || '安装列表加载失败');
+    } finally { setLoading(false); }
   };
 
-  const handleRevoke = async (instId) => {
+  useEffect(() => { load(); }, []);
+
+  const revoke = async (id) => {
+    setRevoking(id);
     try {
-      await revokeInstallation(instId);
-      message.success('已卸载');
-      fetchInstallations();
-    } catch (e) {
-      message.error('卸载失败');
-    }
+      await revokeInstallation(id);
+      message.success('技能已卸载，原访问令牌立即失效');
+      setItems((current) => current.filter((item) => item.id !== id));
+    } catch (requestError) { message.error(requestError.response?.data?.error || '卸载失败'); }
+    finally { setRevoking(''); }
   };
 
-  if (!user) {
-    return (
-      <div style={{ textAlign: 'center', padding: 100 }}>
-        <h3 style={{ color: 'var(--text-primary)', fontSize: 22 }}>🔒 请先登录</h3>
-        <Button className="glow-btn" style={{ marginTop: 12, height: 42, padding: '0 32px' }}
-          onClick={() => navigate('/login')}>
-          前往登录
-        </Button>
-      </div>
-    );
-  }
+  const columns = [
+    {
+      title: '技能', dataIndex: 'skill_name', key: 'skill_name', minWidth: 220,
+      render: (name, record) => <div className="table-primary"><span className="table-icon"><ApiOutlined /></span><div><strong>{name}</strong><small>{record.skill_id}</small></div></div>,
+    },
+    { title: '版本', dataIndex: 'skill_version', key: 'skill_version', width: 100, render: (value) => <Tag>v{value}</Tag> },
+    { title: '令牌标识', dataIndex: 'api_key_prefix', key: 'api_key_prefix', width: 180, render: (value) => <code className="key-prefix"><KeyOutlined /> {value}...</code> },
+    { title: '安装时间', dataIndex: 'installed_at', key: 'installed_at', width: 150, render: (value) => formatDate(value) },
+    { title: '状态', dataIndex: 'status', key: 'status', width: 100, render: () => <Tag color="success">运行中</Tag> },
+    {
+      title: '操作', key: 'actions', width: 190, fixed: 'right', render: (_, record) => (
+        <div className="table-actions">
+          <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/skills/${record.skill_id}`)}>详情</Button>
+          <Popconfirm title="确认卸载此技能？" description="卸载后对应访问令牌会立即失效。" okText="确认卸载" cancelText="取消" onConfirm={() => revoke(record.id)}>
+            <Button type="link" danger icon={<DeleteOutlined />} loading={revoking === record.id}>卸载</Button>
+          </Popconfirm>
+        </div>
+      ),
+    },
+  ];
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      <div className="fade-up">
-        <div className="page-title">
-          <span className="title-icon"><AppstoreOutlined /></span>
-          我的技能
-        </div>
-        <p className="page-subtitle">
-          管理已安装的 AI 技能和 API Token
-        </p>
-      </div>
+    <div className="page">
+      <section className="page-heading">
+        <div><h1>我的技能</h1><p>管理已安装能力、访问令牌标识和运行状态。</p></div>
+        <Button type="primary" icon={<AppstoreAddOutlined />} onClick={() => navigate('/')}>浏览技能市场</Button>
+      </section>
 
-      <Spin spinning={loading}>
-        {installations.length === 0 ? (
-          <div className="glass-card nexus-empty fade-up" style={{ padding: 70, textAlign: 'center' }}>
-            <Empty description="还没有安装任何技能, 去市场看看吧!" />
-            <Button className="glow-btn" style={{ marginTop: 16, height: 42, padding: '0 32px' }}
-              onClick={() => navigate('/')}>
-              前往技能市场 →
-            </Button>
-          </div>
-        ) : (
-          <List
-            className="nexus-list"
-            dataSource={installations}
-            renderItem={(item, i) => (
-              <div
-                className="glass-card fade-up"
-                style={{ padding: '20px 24px', marginBottom: 14, animationDelay: `${Math.min(i * 0.06, 0.3)}s` }}
-              >
-                <div className="install-item">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1, minWidth: 260 }}>
-                    <span className="inst-icon"><AppstoreOutlined /></span>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <Title level={5} style={{ margin: 0, color: 'var(--text-primary)' }}>
-                          {item.skill_name || item.skill_id}
-                        </Title>
-                        <Tag className="nexus-tag nexus-tag-cyan">v{item.skill_version}</Tag>
-                        {item.status === 'active' ? (
-                          <Tag className="nexus-tag nexus-tag-green"><CheckCircleOutlined /> ACTIVE</Tag>
-                        ) : (
-                          <Tag className="nexus-tag nexus-tag-gold"><StopOutlined /> {item.status}</Tag>
-                        )}
-                      </div>
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                          <KeyOutlined style={{ color: 'var(--cyan)', marginRight: 4 }} />
-                          Token: <span style={{ color: 'var(--cyan-bright)' }}>{item.api_key_prefix}...</span>
-                        </Text>
-                        <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                          安装于: {item.installed_at}
-                        </Text>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <Button className="glow-btn glow-btn-ghost" icon={<EyeOutlined />}
-                      onClick={() => navigate(`/skills/${item.skill_id}`)}>
-                      查看
-                    </Button>
-                    <Popconfirm
-                      title="确定要卸载此技能吗?"
-                      description="API Token 将被吊销。"
-                      okText="卸载"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={() => handleRevoke(item.id)}
-                    >
-                      <Button danger icon={<DeleteOutlined />}
-                        style={{ background: 'rgba(244,63,94,0.08)', border: '1px solid rgba(244,63,94,0.35)', color: '#f87171', borderRadius: 10 }}>
-                        卸载
-                      </Button>
-                    </Popconfirm>
-                  </div>
-                </div>
-              </div>
-            )}
-          />
-        )}
-      </Spin>
+      <section className="summary-strip">
+        <div><span>已安装</span><strong>{items.length}</strong><small>个技能</small></div>
+        <div><span>有效令牌</span><strong>{items.filter((item) => item.status === 'active').length}</strong><small>个凭据</small></div>
+        <div><span>安全状态</span><strong className="summary-status">正常</strong><small><SafetyCertificateOutlined /> 令牌均受统一鉴权</small></div>
+      </section>
+
+      <section className="workspace-section">
+        <div className="section-heading"><div><h2>安装记录</h2><p>完整令牌不会在此页面回显。如有泄露风险，请立即卸载后重新安装。</p></div><Button onClick={load}>刷新</Button></div>
+        {loading ? <Skeleton active paragraph={{ rows: 8 }} /> : error ? <div className="state-panel"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error} /><Button type="primary" onClick={load}>重新加载</Button></div> : items.length === 0 ? <div className="state-panel"><Empty description="尚未安装任何技能" /><Button type="primary" onClick={() => navigate('/')}>前往技能市场</Button></div> : <Table className="workspace-table" rowKey="id" dataSource={items} columns={columns} pagination={false} scroll={{ x: 900 }} />}
+      </section>
     </div>
   );
 }

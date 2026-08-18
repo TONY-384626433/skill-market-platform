@@ -1,5 +1,5 @@
 ﻿# ============================================================
-# SKILL NEXUS — 一键启动 (比赛演示模式)
+# SkillHub — 一键启动 (比赛演示模式)
 # 启动: Docker 基础设施 + 技能容器 → Go 后端 → 前端 → 公网隧道
 # 用法: 双击 start-demo.bat 或运行 powershell -File start-demo.ps1
 # ============================================================
@@ -13,7 +13,7 @@ function Test-Port($port) {
 
 Write-Host ""
 Write-Host "  ╔══════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║   SKILL NEXUS · 一键启动 (演示模式)      ║" -ForegroundColor Cyan
+Write-Host "  ║      SkillHub · 一键启动 (演示模式)       ║" -ForegroundColor Cyan
 Write-Host "  ╚══════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 
@@ -122,7 +122,7 @@ Write-Host ""
 Write-Host "   本地完整版:  http://localhost:4173" -ForegroundColor White
 if ($tunnelUrl) { Write-Host "   公网完整版:  $tunnelUrl" -ForegroundColor White }
 Write-Host ""
-Write-Host "   登录账号:    zhangsan / lisi / admin (密码任意)" -ForegroundColor DarkGray
+Write-Host "   登录账号:    zhangsan / lisi / admin (密码: demo)" -ForegroundColor DarkGray
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  提示: 公网隧道 URL 每次启动会变化, 电脑需保持开机" -ForegroundColor DarkGray

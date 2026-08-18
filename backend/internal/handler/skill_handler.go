@@ -57,13 +57,10 @@ func (h *SkillHandler) GetSkill(c *gin.Context) {
 
 // GetCategories GET /api/v1/skills/categories — 获取分类列表
 func (h *SkillHandler) GetCategories(c *gin.Context) {
-	categories := []gin.H{
-		{"key": "smart-ops", "name": "智能运维", "icon": "MonitorOutlined", "count": 12},
-		{"key": "dev-efficiency", "name": "研发效能", "icon": "CodeOutlined", "count": 8},
-		{"key": "security", "name": "安全合规", "icon": "SafetyOutlined", "count": 5},
-		{"key": "data-governance", "name": "数据治理", "icon": "DatabaseOutlined", "count": 6},
-		{"key": "customer-service", "name": "智能客服", "icon": "CustomerServiceOutlined", "count": 4},
-		{"key": "risk-control", "name": "风控分析", "icon": "AlertOutlined", "count": 7},
+	categories, err := h.svc.GetCategories()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "分类统计失败: " + err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": categories})
 }
@@ -86,6 +83,10 @@ func (h *SkillHandler) CreateSkill(c *gin.Context) {
 	if sk.Visibility == "" {
 		sk.Visibility = "private"
 	}
+	if sk.SkillKey == "" || sk.Name == "" || sk.Category == "" || sk.Summary == "" || sk.SkillType == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "技能标识、名称、分类、简介和接入形态不能为空"})
+		return
+	}
 
 	if err := h.svc.CreateSkill(&sk); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建失败: " + err.Error()})
@@ -93,6 +94,47 @@ func (h *SkillHandler) CreateSkill(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "技能已提交,等待审核", "data": sk})
+}
+
+// GetMySubmissions GET /api/v1/skills/my/submissions — 开发者发布记录
+func (h *SkillHandler) GetMySubmissions(c *gin.Context) {
+	skills, err := h.svc.GetAuthorSubmissions(c.GetString("user_id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": skills})
+}
+
+// GetReviewQueue GET /api/v1/admin/review-queue — 待审核队列
+func (h *SkillHandler) GetReviewQueue(c *gin.Context) {
+	skills, err := h.svc.GetReviewQueue()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": skills})
+}
+
+// ReviewSkill POST /api/v1/admin/skills/:id/review — 审核技能
+func (h *SkillHandler) ReviewSkill(c *gin.Context) {
+	var req struct {
+		Verdict string `json:"verdict" binding:"required,oneof=approve reject"`
+		Comment string `json:"comment"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "审核结论必须为 approve 或 reject"})
+		return
+	}
+	if req.Verdict == "reject" && req.Comment == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "驳回时必须填写原因"})
+		return
+	}
+	if err := h.svc.ReviewSkill(c.Param("id"), c.GetString("user_id"), req.Verdict, req.Comment); err != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "审核已完成"})
 }
 
 // InstallSkill POST /api/v1/skills/:id/install — 一键安装技能
@@ -112,10 +154,10 @@ func (h *SkillHandler) InstallSkill(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "安装成功",
-		"installation":  inst,
-		"api_token":     apiToken,
-		"tip":           "请妥善保管 Token, 仅显示一次。可在 Dify 工具配置中使用此 Token 调用技能。",
+		"message":      "安装成功",
+		"installation": inst,
+		"api_token":    apiToken,
+		"tip":          "请妥善保管 Token, 仅显示一次。可在 Dify 工具配置中使用此 Token 调用技能。",
 	})
 }
 

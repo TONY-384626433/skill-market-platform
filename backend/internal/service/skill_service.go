@@ -1,8 +1,9 @@
 package service
 
 import (
+	"crypto/rand"
 	"database/sql"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -126,12 +127,12 @@ func (s *SkillService) GetByID(id string) (*model.Skill, error) {
 	err := s.db.QueryRow(`
 		SELECT s.id, s.skill_key, s.name, s.version, s.category,
 		       s.tags, s.summary, COALESCE(s.description,''), COALESCE(s.icon_url,''),
-		       s.skill_type, COALESCE(s.endpoint_url,''), s.stability,
+		       s.skill_type, COALESCE(s.endpoint_url,''), COALESCE(s.endpoint_protocol,'http'), s.stability,
 		       s.install_count, s.call_count, s.rating_avg, s.rating_count,
-		       s.status, s.author_id, COALESCE(u.display_name,''),
+		       s.status, s.visibility, s.author_id, COALESCE(u.display_name,''),
 		       COALESCE(s.team_id,''), COALESCE(t.name,''),
-		       COALESCE(s.manifest::text,'{}'), COALESCE(s.interface_spec::text,'{}'),
-		       COALESCE(s.permissions::text,'[]'),
+		       COALESCE(s.manifest::text,'{}'), COALESCE(s.dependencies::text,'{}'),
+		       COALESCE(s.interface_spec::text,'{}'), COALESCE(s.permissions::text,'[]'),
 		       s.created_at, s.updated_at
 		FROM skills s
 		LEFT JOIN users u ON s.author_id = u.id
@@ -140,11 +141,11 @@ func (s *SkillService) GetByID(id string) (*model.Skill, error) {
 	`, id).Scan(
 		&sk.ID, &sk.SkillKey, &sk.Name, &sk.Version, &sk.Category,
 		pq.Array(&sk.Tags), &sk.Summary, &sk.Description, &sk.IconURL,
-		&sk.SkillType, &sk.EndpointURL, &sk.Stability,
+		&sk.SkillType, &sk.EndpointURL, &sk.EndpointProto, &sk.Stability,
 		&sk.InstallCount, &sk.CallCount, &sk.RatingAvg, &sk.RatingCount,
-		&sk.Status, &sk.AuthorID, &sk.AuthorName,
+		&sk.Status, &sk.Visibility, &sk.AuthorID, &sk.AuthorName,
 		&sk.TeamID, &sk.TeamName,
-		&sk.Manifest, &sk.InterfaceSpec, &sk.Permissions,
+		&sk.Manifest, &sk.Dependencies, &sk.InterfaceSpec, &sk.Permissions,
 		&sk.CreatedAt, &sk.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -192,12 +193,27 @@ func (s *SkillService) GetByCategory(category string, limit int) ([]model.Skill,
 
 // CreateSkill 创建新技能 (提交审核)
 func (s *SkillService) CreateSkill(sk *model.Skill) error {
+	if sk.Manifest == "" {
+		sk.Manifest = "{}"
+	}
+	if sk.Dependencies == "" {
+		sk.Dependencies = "{}"
+	}
+	if sk.Permissions == "" {
+		sk.Permissions = "[]"
+	}
+	if sk.InterfaceSpec == "" {
+		sk.InterfaceSpec = "{}"
+	}
+	if sk.EndpointProto == "" {
+		sk.EndpointProto = "http"
+	}
 	_, err := s.db.Exec(`
 		INSERT INTO skills (skill_key, name, version, category, sub_category, tags,
 		       summary, description, skill_type, endpoint_url, endpoint_protocol,
 		       manifest, dependencies, permissions, interface_spec,
 		       stability, status, visibility, author_id, team_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending_approval',$17,$18,$19)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending_approval',$17,$18,NULLIF($19,''))
 	`, sk.SkillKey, sk.Name, sk.Version, sk.Category, sk.SubCategory,
 		pq.Array(sk.Tags),
 		sk.Summary, sk.Description,
@@ -209,6 +225,135 @@ func (s *SkillService) CreateSkill(sk *model.Skill) error {
 		return fmt.Errorf("create skill: %w", err)
 	}
 	return nil
+}
+
+// GetCategories 获取公开技能的实时分类统计。
+func (s *SkillService) GetCategories() ([]model.CategoryStat, error) {
+	rows, err := s.db.Query(`
+		SELECT category, COUNT(*)
+		FROM skills
+		WHERE status='published' AND visibility='public'
+		GROUP BY category
+		ORDER BY COUNT(*) DESC, category ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	categories := make([]model.CategoryStat, 0)
+	for rows.Next() {
+		var category model.CategoryStat
+		if err := rows.Scan(&category.Name, &category.Count); err != nil {
+			return nil, err
+		}
+		category.Key = category.Name
+		categories = append(categories, category)
+	}
+	return categories, rows.Err()
+}
+
+// GetAuthorSubmissions 获取开发者提交的全部版本。
+func (s *SkillService) GetAuthorSubmissions(authorID string) ([]model.Skill, error) {
+	rows, err := s.db.Query(`
+		SELECT s.id, s.skill_key, s.name, s.version, s.category, s.tags,
+		       s.summary, s.skill_type, s.stability, s.status, s.visibility,
+		       COALESCE(s.review_comment,''), s.install_count, s.call_count,
+		       s.rating_avg, s.created_at, s.updated_at
+		FROM skills s
+		WHERE s.author_id=$1
+		ORDER BY s.updated_at DESC
+	`, authorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	skills := make([]model.Skill, 0)
+	for rows.Next() {
+		var sk model.Skill
+		if err := rows.Scan(&sk.ID, &sk.SkillKey, &sk.Name, &sk.Version, &sk.Category,
+			pq.Array(&sk.Tags), &sk.Summary, &sk.SkillType, &sk.Stability, &sk.Status,
+			&sk.Visibility, &sk.ReviewComment, &sk.InstallCount, &sk.CallCount,
+			&sk.RatingAvg, &sk.CreatedAt, &sk.UpdatedAt); err != nil {
+			return nil, err
+		}
+		skills = append(skills, sk)
+	}
+	return skills, rows.Err()
+}
+
+// GetReviewQueue 获取待人工审核的技能。
+func (s *SkillService) GetReviewQueue() ([]model.Skill, error) {
+	rows, err := s.db.Query(`
+		SELECT s.id, s.skill_key, s.name, s.version, s.category, s.tags,
+		       s.summary, COALESCE(s.description,''), s.skill_type,
+		       COALESCE(s.endpoint_url,''), s.stability, s.status, s.visibility,
+		       s.author_id, COALESCE(u.display_name,''), COALESCE(s.team_id,''),
+		       COALESCE(t.name,''), s.created_at, s.updated_at
+		FROM skills s
+		LEFT JOIN users u ON s.author_id=u.id
+		LEFT JOIN teams t ON s.team_id=t.id
+		WHERE s.status='pending_approval'
+		ORDER BY s.created_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	skills := make([]model.Skill, 0)
+	for rows.Next() {
+		var sk model.Skill
+		if err := rows.Scan(&sk.ID, &sk.SkillKey, &sk.Name, &sk.Version, &sk.Category,
+			pq.Array(&sk.Tags), &sk.Summary, &sk.Description, &sk.SkillType,
+			&sk.EndpointURL, &sk.Stability, &sk.Status, &sk.Visibility,
+			&sk.AuthorID, &sk.AuthorName, &sk.TeamID, &sk.TeamName,
+			&sk.CreatedAt, &sk.UpdatedAt); err != nil {
+			return nil, err
+		}
+		skills = append(skills, sk)
+	}
+	return skills, rows.Err()
+}
+
+// ReviewSkill 完成人工审核并记录审核流水。
+func (s *SkillService) ReviewSkill(skillID, reviewerID, verdict, comment string) error {
+	status := "rejected"
+	reviewVerdict := "fail"
+	if verdict == "approve" {
+		status = "published"
+		reviewVerdict = "pass"
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
+		UPDATE skills
+		SET status=$1, visibility=CASE WHEN $2 THEN 'public' ELSE visibility END,
+		    review_comment=$3, updated_at=NOW()
+		WHERE id=$4 AND status='pending_approval'
+	`, status, verdict == "approve", comment, skillID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected == 0 {
+		return fmt.Errorf("待审核技能不存在或状态已变更")
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO skill_reviews (skill_id, reviewer_id, stage, verdict, comment)
+		VALUES ($1,$2,'manual_review',$3,$4)
+	`, skillID, reviewerID, reviewVerdict, comment)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // UpdateSkill 更新技能
@@ -231,6 +376,13 @@ func (s *SkillService) UpdateSkill(id string, updates map[string]interface{}) er
 
 // InstallSkill 安装技能 — 生成 API Token
 func (s *SkillService) InstallSkill(skillID, userID, version string) (*model.SkillInstallation, string, error) {
+	var currentVersion string
+	if err := s.db.QueryRow(`SELECT version FROM skills WHERE id=$1 AND status='published'`, skillID).Scan(&currentVersion); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, "", fmt.Errorf("技能不存在或尚未发布")
+		}
+		return nil, "", err
+	}
 	// 检查是否已安装
 	var existingID string
 	_ = s.db.QueryRow(`SELECT id FROM skill_installations WHERE skill_id=$1 AND user_id=$2 AND status='active'`,
@@ -240,13 +392,17 @@ func (s *SkillService) InstallSkill(skillID, userID, version string) (*model.Ski
 	}
 
 	// 生成 API Token: sk-{user_prefix}-{random}
-	rawToken := "sk-" + userID[:min(8, len(userID))] + "-" + randomHex(32)
+	randomPart, err := randomHex(32)
+	if err != nil {
+		return nil, "", fmt.Errorf("generate install token: %w", err)
+	}
+	rawToken := "sk-" + userID[:min(8, len(userID))] + "-" + randomPart
 	tokenHash := hashToken(rawToken)
 	tokenPrefix := rawToken[:16]
 
 	// 获取技能版本
 	if version == "" {
-		_ = s.db.QueryRow(`SELECT version FROM skills WHERE id=$1`, skillID).Scan(&version)
+		version = currentVersion
 	}
 
 	inst := &model.SkillInstallation{
@@ -258,9 +414,17 @@ func (s *SkillService) InstallSkill(skillID, userID, version string) (*model.Ski
 		InstalledAt:  time.Now(),
 	}
 
-	err := s.db.QueryRow(`
+	err = s.db.QueryRow(`
 		INSERT INTO skill_installations (skill_id, skill_version, user_id, api_key_hash, api_key_prefix, status)
 		VALUES ($1,$2,$3,$4,$5,'active')
+		ON CONFLICT (skill_id, user_id) DO UPDATE SET
+		  skill_version=EXCLUDED.skill_version,
+		  api_key_hash=EXCLUDED.api_key_hash,
+		  api_key_prefix=EXCLUDED.api_key_prefix,
+		  token_expires_at=NULL,
+		  status='active',
+		  installed_at=NOW(),
+		  revoked_at=NULL
 		RETURNING id
 	`, skillID, version, userID, tokenHash, tokenPrefix).Scan(&inst.ID)
 	if err != nil {
@@ -304,11 +468,27 @@ func (s *SkillService) GetUserInstallations(userID string) ([]model.SkillInstall
 
 // RevokeInstallation 注销安装
 func (s *SkillService) RevokeInstallation(installationID, userID string) error {
-	_, err := s.db.Exec(`
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var skillID string
+	if err := tx.QueryRow(`SELECT skill_id FROM skill_installations WHERE id=$1 AND user_id=$2 AND status='active'`, installationID, userID).Scan(&skillID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("安装记录不存在或已卸载")
+		}
+		return err
+	}
+	_, err = tx.Exec(`
 		UPDATE skill_installations SET status='revoked', revoked_at=NOW()
 		WHERE id=$1 AND user_id=$2 AND status='active'
 	`, installationID, userID)
-	return err
+	if err != nil {
+		return err
+	}
+	_, _ = tx.Exec(`UPDATE skills SET install_count=GREATEST(install_count-1,0) WHERE id=$1`, skillID)
+	return tx.Commit()
 }
 
 // ============================================================
@@ -452,15 +632,22 @@ func (s *SkillService) BumpCallCount(skillKey string) error {
 // GetOverviewStats 获取概览统计
 func (s *SkillService) GetOverviewStats() (map[string]interface{}, error) {
 	var totalSkills, totalInstalls, monthlyCalls, monthlyActiveUsers int64
-	var avgRating float64
+	var pendingReviews, piiBlocked int64
+	var avgRating, successRate float64
+	var avgDurationMs int64
 	err := s.db.QueryRow(`
 		SELECT
 		  (SELECT COUNT(*) FROM skills WHERE status='published'),
 		  (SELECT COUNT(*) FROM skill_installations WHERE status='active'),
 		  (SELECT COUNT(*) FROM skill_audit_logs WHERE created_at > NOW() - INTERVAL '30 days'),
 		  (SELECT COUNT(DISTINCT user_id) FROM skill_audit_logs WHERE created_at > NOW() - INTERVAL '30 days'),
-		  (SELECT COALESCE(ROUND(AVG(rating_avg)::numeric,2),0) FROM skills WHERE status='published')
-	`).Scan(&totalSkills, &totalInstalls, &monthlyCalls, &monthlyActiveUsers, &avgRating)
+		  (SELECT COALESCE(ROUND(AVG(rating_avg)::numeric,2),0) FROM skills WHERE status='published'),
+		  (SELECT COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE response_status='success') / NULLIF(COUNT(*),0),1),100) FROM skill_audit_logs WHERE created_at > NOW() - INTERVAL '30 days'),
+		  (SELECT COALESCE(ROUND(AVG(duration_ms)),0) FROM skill_audit_logs WHERE created_at > NOW() - INTERVAL '30 days'),
+		  (SELECT COUNT(*) FROM skills WHERE status='pending_approval'),
+		  (SELECT COUNT(*) FROM skill_audit_logs WHERE pii_detected=true AND created_at > NOW() - INTERVAL '30 days')
+	`).Scan(&totalSkills, &totalInstalls, &monthlyCalls, &monthlyActiveUsers, &avgRating,
+		&successRate, &avgDurationMs, &pendingReviews, &piiBlocked)
 	if err != nil {
 		return nil, fmt.Errorf("get overview stats: %w", err)
 	}
@@ -471,6 +658,10 @@ func (s *SkillService) GetOverviewStats() (map[string]interface{}, error) {
 		"monthly_calls":        monthlyCalls,
 		"monthly_active_users": monthlyActiveUsers,
 		"avg_rating":           avgRating,
+		"success_rate":         successRate,
+		"avg_duration_ms":      avgDurationMs,
+		"pending_reviews":      pendingReviews,
+		"pii_blocked":          piiBlocked,
 	}, nil
 }
 
@@ -484,15 +675,12 @@ func hashToken(token string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func randomHex(n int) string {
-	// 简化实现: 生产环境应使用 crypto/rand
-	const hexChars = "0123456789abcdef"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = hexChars[time.Now().UnixNano()%int64(len(hexChars))]
-		time.Sleep(1) // 简陋但足够的唯一性保证
+func randomHex(n int) (string, error) {
+	b := make([]byte, (n+1)/2)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
 	}
-	return string(b)
+	return hex.EncodeToString(b)[:n], nil
 }
 
 func min(a, b int) int {
@@ -501,6 +689,3 @@ func min(a, b int) int {
 	}
 	return b
 }
-
-// 确保 encoding/json 被使用 (manifest 解析)
-var _ = json.Marshal

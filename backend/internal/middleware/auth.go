@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +38,9 @@ func JWTAuth(secret string) gin.HandlerFunc {
 
 		claims := &Claims{}
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %s", t.Method.Alg())
+			}
 			return []byte(secret), nil
 		})
 
@@ -79,8 +84,30 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 
 // CORSMiddleware 跨域中间件 (开发环境)
 func CORSMiddleware() gin.HandlerFunc {
+	allowedOrigins := map[string]bool{
+		"http://localhost:3000":            true,
+		"http://localhost:4173":            true,
+		"http://127.0.0.1:3000":            true,
+		"http://127.0.0.1:4173":            true,
+		"https://tony-384626433.github.io": true,
+	}
+	for _, origin := range strings.Split(os.Getenv("CORS_ALLOWED_ORIGINS"), ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			allowedOrigins[origin] = true
+		}
+	}
+
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if origin != "" && !allowedOrigins[origin] {
+			if c.Request.Method == http.MethodOptions {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		} else if origin != "" {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Skill-Token")
 		c.Header("Access-Control-Max-Age", "86400")
