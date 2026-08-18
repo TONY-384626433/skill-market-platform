@@ -1,10 +1,12 @@
 // ============================================================
 // API 服务层 — 统一封装后端接口调用
+// 支持构建时指定后端地址: VITE_API_BASE=https://xxx/api/v1
+// 默认同源 (/api/v1, 由 vite proxy 转发)
 // ============================================================
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE || '/api/v1',
   timeout: 30000,
 });
 

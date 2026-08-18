@@ -71,6 +71,15 @@ func main() {
 		})
 	})
 
+	// 健康检查别名 (前端 checkHealth 使用 /api/v1 前缀)
+	r.GET("/api/v1/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"service": "Skill Market API",
+			"version": "1.0.0",
+		})
+	})
+
 	// 登录 (简化, 开发用)
 	r.POST("/api/v1/auth/login", func(c *gin.Context) {
 		var req struct {
