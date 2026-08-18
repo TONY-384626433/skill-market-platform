@@ -13,7 +13,7 @@ import {
 import { searchSkills, getCategories, getStats } from '../services/api';
 import useCountUp from '../components/useCountUp';
 import useTilt from '../components/useTilt';
-import useTypewriter from '../components/useTypewriter';
+import TerminalHero from '../components/TerminalHero';
 
 const { Search } = Input;
 
@@ -101,12 +101,6 @@ export default function MarketPage() {
   const [stats, setStats] = useState({});
   const [selectedCategory, setSelectedCategory] = useState('');
   const [sortBy, setSortBy] = useState('installs');
-  const typed = useTypewriter([
-    '数据库智能巡检助手...',
-    '日志敏感信息脱敏...',
-    '告警收敛分析...',
-    'AI 需求分析助手...',
-  ]);
 
   useEffect(() => {
     fetchSkills();
@@ -142,11 +136,7 @@ export default function MarketPage() {
         <p className="hero-subtitle">
           搜索、安装、复用 — 让 AI 能力在组织内自由流动
         </p>
-        <div className="hero-terminal">
-          <span style={{ color: 'var(--cyan)' }}>$</span> skill-nexus search
-          <span style={{ color: 'var(--text-dim)' }}> --query</span> {typed}
-          <span className="cursor" />
-        </div>
+        <TerminalHero />
         <Search
           className="hero-search"
           placeholder="输入关键词搜索技能, 例如: 数据库巡检、日志脱敏、告警收敛..."
