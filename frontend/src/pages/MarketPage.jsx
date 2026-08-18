@@ -60,7 +60,9 @@ export default function MarketPage() {
   const [skills, setSkills] = useState([]);
   const [categories, setCategories] = useState([]);
   const [stats, setStats] = useState(emptyStats);
-  const [source, setSource] = useState('internal');
+  const [source, setSource] = useState(() => (
+    localStorage.getItem('skillhub_market_source') === 'internal' ? 'internal' : 'github'
+  ));
   const [githubQuery, setGitHubQuery] = useState('');
   const [githubSearchVersion, setGitHubSearchVersion] = useState(0);
   const [filters, setFilters] = useState({ query: '', category: '', skill_type: '', sort_by: 'installs' });
@@ -108,6 +110,7 @@ export default function MarketPage() {
   const activeSuggestions = source === 'github' ? ['browser automation', 'data analysis', 'security audit', 'MCP'] : suggestions;
   const changeSource = (nextSource) => {
     setSource(nextSource);
+    localStorage.setItem('skillhub_market_source', nextSource);
     if (nextSource === 'github') setGitHubQuery(filters.query.trim());
   };
   const triggerSearch = () => {
