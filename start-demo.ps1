@@ -36,7 +36,21 @@ Write-Host "[2/5] Go 后端 API ..." -ForegroundColor Yellow
 if (Test-Port 8080) {
     Write-Host "  ✓ 后端已在运行 (8080)" -ForegroundColor Green
 } else {
+    # 已登录 GitHub CLI 时，将 Token 仅传给后端子进程，用于提升公开 Skill 搜索额度。
+    $previousGitHubToken = $env:GITHUB_TOKEN
+    if (-not $env:GITHUB_TOKEN) {
+        $githubCLI = Get-Command gh -ErrorAction SilentlyContinue
+        if ($githubCLI) {
+            $detectedGitHubToken = (& gh auth token 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $detectedGitHubToken) {
+                $env:GITHUB_TOKEN = $detectedGitHubToken.Trim()
+                Write-Host "  ✓ 已连接 GitHub 公开技能索引" -ForegroundColor Green
+            }
+        }
+    }
     Start-Process -FilePath "$ROOT\backend\skill-market-backend.exe" -WorkingDirectory "$ROOT\backend" -WindowStyle Hidden
+    if ($previousGitHubToken) { $env:GITHUB_TOKEN = $previousGitHubToken }
+    elseif (Test-Path Env:GITHUB_TOKEN) { Remove-Item Env:GITHUB_TOKEN }
     Start-Sleep 3
     if (Test-Port 8080) { Write-Host "  ✓ 后端启动成功 (8080)" -ForegroundColor Green }
     else { Write-Host "  ✗ 后端启动失败! 检查 backend\skill-market-backend.exe" -ForegroundColor Red }

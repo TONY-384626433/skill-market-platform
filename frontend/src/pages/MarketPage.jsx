@@ -2,7 +2,7 @@ import React, { useCallback, useContext, useEffect, useMemo, useState } from 're
 import { App as AntApp, Button, Empty, Input, Segmented, Select, Skeleton, Tag, Tooltip } from 'antd';
 import {
   ApiOutlined, AppstoreOutlined, ArrowRightOutlined, BankOutlined, CheckCircleFilled, CodeOutlined,
-  DownloadOutlined, HeartFilled, HeartOutlined, PlusOutlined, PlayCircleOutlined,
+  DownloadOutlined, GithubOutlined, HeartFilled, HeartOutlined, PlusOutlined, PlayCircleOutlined,
   ReloadOutlined, SafetyCertificateOutlined, SearchOutlined, StarFilled,
   ThunderboltOutlined, UnorderedListOutlined,
 } from '@ant-design/icons';
@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { getCategories, getStats, searchSkills } from '../services/api';
 import { UserContext } from '../App';
 import SkillVisual from '../components/SkillVisual';
+import GitHubCatalog from '../components/GitHubCatalog';
 import { formatNumber } from '../utils/format';
 
 const emptyStats = { total_skills: 0, total_installs: 0, monthly_calls: 0, success_rate: 100, monthly_active_users: 0, avg_duration_ms: 0 };
@@ -59,6 +60,9 @@ export default function MarketPage() {
   const [skills, setSkills] = useState([]);
   const [categories, setCategories] = useState([]);
   const [stats, setStats] = useState(emptyStats);
+  const [source, setSource] = useState('internal');
+  const [githubQuery, setGitHubQuery] = useState('');
+  const [githubSearchVersion, setGitHubSearchVersion] = useState(0);
   const [filters, setFilters] = useState({ query: '', category: '', skill_type: '', sort_by: 'installs' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -93,13 +97,25 @@ export default function MarketPage() {
   }, []);
 
   useEffect(() => {
+    if (source !== 'internal') return undefined;
     const timer = window.setTimeout(() => loadSkills(filters), filters.query ? 280 : 0);
     return () => window.clearTimeout(timer);
-  }, [filters, loadSkills]);
+  }, [filters, loadSkills, source]);
 
   const visibleSkills = useMemo(() => favoritesOnly ? skills.filter((skill) => favorites.has(String(skill.id))) : skills, [favorites, favoritesOnly, skills]);
   const activeFilterCount = [filters.query, filters.category, filters.skill_type, favoritesOnly].filter(Boolean).length;
   const quickSkills = skills.slice(0, 3);
+  const activeSuggestions = source === 'github' ? ['browser automation', 'data analysis', 'security audit', 'MCP'] : suggestions;
+  const changeSource = (nextSource) => {
+    setSource(nextSource);
+    if (nextSource === 'github') setGitHubQuery(filters.query.trim());
+  };
+  const triggerSearch = () => {
+    if (source === 'github') {
+      setGitHubQuery(filters.query.trim());
+      setGitHubSearchVersion((value) => value + 1);
+    } else loadSkills(filters);
+  };
 
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value || '' }));
   const resetFilters = () => {
@@ -124,25 +140,26 @@ export default function MarketPage() {
     <div className="page market-page">
       <section className="market-command" aria-label="技能发现控制台">
         <div className="market-command-copy">
-          <div className="command-eyebrow"><span><i /> GOVERNED AI MARKETPLACE</span><em>企业内部</em></div>
-          <h1>让可信 AI 能力，在业务一线即取即用</h1>
-          <p>发现、评估并接入经过安全审核的 MCP 服务、工作流与 API。</p>
+          <div className="command-eyebrow"><span><i /> GOVERNED AI MARKETPLACE</span><Segmented className="market-source-switch" value={source} onChange={changeSource} options={[{ value: 'internal', label: <span><BankOutlined /> 企业审核库</span> }, { value: 'github', label: <span><GithubOutlined /> GitHub 开源</span> }]} /></div>
+          <h1>{source === 'github' ? '连接全球开源 Skill，让能力边界持续扩展' : '让可信 AI 能力，在业务一线即取即用'}</h1>
+          <p>{source === 'github' ? '搜索 GitHub 公开 SKILL.md，自动识别本机运行时与安装兼容性。' : '发现、评估并接入经过安全审核的 MCP 服务、工作流与 API。'}</p>
           <div className="market-search">
-            <Input size="large" prefix={<SearchOutlined />} placeholder="输入能力、场景或标签，实时检索" value={filters.query} allowClear onChange={(event) => updateFilter('query', event.target.value)} onPressEnter={() => loadSkills(filters)} />
-            <Button type="primary" size="large" icon={<SearchOutlined />} onClick={() => loadSkills(filters)}>搜索能力</Button>
+            <Input size="large" prefix={<SearchOutlined />} placeholder={source === 'github' ? '搜索 GitHub 公开技能、仓库或场景' : '输入能力、场景或标签，实时检索'} value={filters.query} allowClear onChange={(event) => updateFilter('query', event.target.value)} onPressEnter={triggerSearch} />
+            <Button type="primary" size="large" icon={source === 'github' ? <GithubOutlined /> : <SearchOutlined />} onClick={triggerSearch}>{source === 'github' ? '搜索 GitHub' : '搜索能力'}</Button>
           </div>
-          <div className="search-suggestions"><span>热门能力</span>{suggestions.map((item) => <button key={item} type="button" onClick={() => updateFilter('query', item)}>{item}</button>)}</div>
+          <div className="search-suggestions"><span>{source === 'github' ? '开源热搜' : '热门能力'}</span>{activeSuggestions.map((item) => <button key={item} type="button" onClick={() => updateFilter('query', item)}>{item}</button>)}</div>
         </div>
         <div className="capability-radar" aria-hidden="true">
           <div className="radar-ring ring-one" /><div className="radar-ring ring-two" /><div className="radar-axis axis-one" /><div className="radar-axis axis-two" />
-          <div className="radar-core"><BankOutlined /><span>SkillHub</span></div>
+          <div className="radar-core">{source === 'github' ? <GithubOutlined /> : <BankOutlined />}<span>{source === 'github' ? 'GitHub' : 'SkillHub'}</span></div>
           <span className="radar-node node-one"><SafetyCertificateOutlined /></span>
           <span className="radar-node node-two"><ApiOutlined /></span>
           <span className="radar-node node-three"><CodeOutlined /></span>
-          <div className="radar-status"><i /> {stats.total_skills} 项可信能力在线</div>
+          <div className="radar-status"><i /> {source === 'github' ? '公开技能索引已连接' : `${stats.total_skills} 项可信能力在线`}</div>
         </div>
       </section>
 
+      {source === 'github' ? <GitHubCatalog query={githubQuery} searchVersion={githubSearchVersion} /> : <>
       <section className="market-metrics" aria-label="平台运营指标">
         <Metric icon={AppstoreOutlined} label="已上架技能" value={stats.total_skills} suffix=" 个" detail="全部通过发布审核" tone="blue" />
         <Metric icon={DownloadOutlined} label="累计安装" value={stats.total_installs} suffix=" 次" detail="企业内部授权接入" tone="teal" />
@@ -182,6 +199,7 @@ export default function MarketPage() {
           )}
         </div>
       </section>
+      </>}
     </div>
   );
 }

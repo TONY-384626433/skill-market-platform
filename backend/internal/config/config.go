@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"time"
+)
 
 // Config 应用配置
 type Config struct {
@@ -10,6 +13,7 @@ type Config struct {
 	ES         ESConfig
 	JWT        JWTConfig
 	LLM        LLMConfig
+	GitHub     GitHubConfig
 }
 
 type DBConfig struct {
@@ -48,6 +52,12 @@ type LLMConfig struct {
 	Model   string
 }
 
+type GitHubConfig struct {
+	Token    string
+	APIBase  string
+	CacheTTL time.Duration
+}
+
 // Load 加载配置 (从环境变量)
 func Load() *Config {
 	return &Config{
@@ -76,6 +86,11 @@ func Load() *Config {
 			APIBase: getEnv("LLM_API_BASE", "http://localhost:8080/v1"),
 			APIKey:  getEnv("LLM_API_KEY", ""),
 			Model:   getEnv("LLM_MODEL", "deepseek-v3"),
+		},
+		GitHub: GitHubConfig{
+			Token:    getEnv("GITHUB_TOKEN", ""),
+			APIBase:  getEnv("GITHUB_API_URL", "https://api.github.com"),
+			CacheTTL: 5 * time.Minute,
 		},
 	}
 }

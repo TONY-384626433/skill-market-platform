@@ -1085,3 +1085,106 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
   .market-command { background: rgba(8,20,36,.8) !important; }
   .tech-grid { background-size: 34px 34px; }
 }
+
+/* GitHub public skill index */
+.market-source-switch { min-width: 246px; border: 1px solid rgba(93,205,239,.2); background: rgba(8,21,37,.74) !important; }
+.market-source-switch .ant-segmented-item { color: #718aa3; }
+.market-source-switch .ant-segmented-item-label > span { display: inline-flex; align-items: center; gap: 6px; }
+.market-source-switch .ant-segmented-item-selected { color: #dffaff !important; background: rgba(31,151,195,.25) !important; box-shadow: inset 0 0 0 1px rgba(82,224,255,.3), 0 0 18px rgba(43,211,255,.11) !important; }
+
+.github-catalog { margin-top: 14px; }
+.github-index-strip { min-height: 82px; display: grid; grid-template-columns: minmax(270px, 1.6fr) repeat(3, minmax(130px, .7fr)); align-items: center; margin-bottom: 12px; border: 1px solid rgba(101,181,228,.22); background: rgba(8,20,36,.72); backdrop-filter: blur(18px) saturate(138%); box-shadow: inset 0 1px rgba(191,234,255,.05), 0 12px 34px rgba(0,0,0,.16); }
+.github-index-strip > div { min-width: 0; padding: 14px 18px; border-right: 1px solid rgba(103,171,215,.15); }
+.github-index-strip > div:last-child { border-right: 0; }
+.github-index-strip > div:first-child { display: flex; align-items: center; gap: 12px; }
+.github-index-strip span, .github-index-strip strong, .github-index-strip small { display: block; }
+.github-index-strip > div > span:not(.github-index-icon) { color: #778fa6; font-size: 9px; }
+.github-index-strip strong { color: #e9f7ff; font-family: "JetBrains Mono Variable", "Noto Sans SC Variable", monospace; font-size: 19px; font-variant-numeric: tabular-nums; }
+.github-index-strip strong small { display: inline; margin-left: 3px; color: #6d8399; font-size: 9px; }
+.github-index-strip > div:first-child strong { font-size: 13px; }
+.github-index-strip > div:first-child small { margin-top: 4px; color: #6f879d; font-family: "Inter Variable", "Noto Sans SC Variable", sans-serif; font-size: 9px; }
+.github-index-icon { width: 38px; height: 38px; display: grid !important; place-items: center; flex: 0 0 auto; color: #62e7ff; border: 1px solid rgba(86,224,255,.42); background: rgba(43,188,224,.1); box-shadow: 0 0 0 1px rgba(66,221,255,.05), 0 0 20px rgba(45,210,255,.13), 0 0 60px rgba(120,76,255,.08); font-size: 18px; }
+.github-notice { margin-bottom: 12px; border-color: rgba(81,201,235,.22) !important; background: rgba(13,37,55,.7) !important; }
+.github-notice .ant-alert-message { color: #91abc0 !important; font-size: 10px; }
+
+.github-catalog-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 22px; align-items: start; }
+.github-filter-panel { position: sticky; top: 88px; }
+.github-filter-panel > button { width: 100%; min-height: 39px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 10px 0 12px; color: #8198ae; border: 0; border-left: 3px solid transparent; background: transparent; cursor: pointer; text-align: left; }
+.github-filter-panel > button:hover { color: #dffaff; background: rgba(45,137,177,.1); }
+.github-filter-panel > button.active { color: #63e6ff; font-weight: 650; border-left-color: #55e5ff; background: rgba(43,176,220,.11); box-shadow: inset 0 0 0 1px rgba(74,216,255,.14); }
+.github-filter-panel > button b { min-width: 24px; padding: 2px 5px; color: #849bb0; border-radius: 4px; background: rgba(100,154,196,.12); font-family: "JetBrains Mono Variable", monospace; font-size: 9px; text-align: center; }
+.host-profile { margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(104,173,218,.16); }
+.host-profile > div:first-child { display: flex; align-items: center; gap: 9px; color: #5ce5ff; }
+.host-profile > div:first-child > span { min-width: 0; }
+.host-profile strong, .host-profile small { display: block; }
+.host-profile strong { color: #d5e9f7; font-size: 10px; }
+.host-profile small { margin-top: 3px; color: #687f96; font-family: "JetBrains Mono Variable", monospace; font-size: 8px; }
+.runtime-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 11px; }
+.runtime-grid > span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; color: #71889e; border: 1px solid rgba(103,167,210,.16); background: rgba(12,29,47,.55); font-family: "JetBrains Mono Variable", monospace; font-size: 8px; }
+.runtime-grid > span i { width: 5px; height: 5px; border-radius: 50%; background: #526a80; }
+.runtime-grid > span.available { color: #78d9c0; }
+.runtime-grid > span.available i { background: #42dfb2; box-shadow: 0 0 8px rgba(66,223,178,.55); }
+
+.github-results { min-width: 0; }
+.github-results-toolbar { min-height: 48px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 13px; }
+.github-results-toolbar h2 { display: inline; margin: 0 10px 0 0; color: #eaf4ff; font-size: 18px; }
+.github-results-toolbar span { color: #748ba1; font-size: 10px; }
+.github-results-toolbar .ant-select { width: 150px; }
+.github-skill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+.github-skill-card { position: relative; min-width: 0; min-height: 326px; display: flex; flex-direction: column; overflow: hidden; padding: 17px; border: 1px solid rgba(108,177,222,.22); border-top-color: rgba(78,218,255,.62); background: rgba(9,20,36,.72); backdrop-filter: blur(18px) saturate(138%); box-shadow: inset 0 1px rgba(195,237,255,.05), 0 12px 32px rgba(0,0,0,.2); transition: border-color .2s, box-shadow .2s, transform .2s; }
+.github-skill-card::after { content: ""; position: absolute; z-index: 5; top: -120%; left: -55%; width: 34%; height: 340%; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(210,246,255,.04), rgba(226,250,255,.22), rgba(180,136,255,.1), transparent); transform: rotate(18deg) translateX(-140%); transition: transform .78s cubic-bezier(.2,.7,.2,1); }
+.github-skill-card:hover { border-color: rgba(87,225,255,.58); box-shadow: 0 0 0 1px rgba(63,221,255,.08), 0 0 20px rgba(45,210,255,.13), 0 0 60px rgba(122,77,255,.1), inset 0 1px rgba(212,244,255,.1); transform: translateY(-3px); }
+.github-skill-card:hover::after { transform: rotate(18deg) translateX(640%); }
+.github-card-head { min-height: 40px; display: flex; align-items: flex-start; gap: 8px; }
+.github-skill-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; color: #66e9ff; border: 1px solid rgba(88,221,255,.38); background: rgba(45,190,228,.1); box-shadow: 0 0 18px rgba(48,211,255,.1); font-size: 18px; }
+.github-card-badges { min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.github-card-badges .ant-tag { margin: 0; font-size: 8px; }
+.compatibility-badge { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 3px 6px; border: 1px solid; font-size: 8px; }
+.compatibility-badge.installable { color: #61e7bc; border-color: rgba(68,226,181,.36); background: rgba(49,204,163,.1); box-shadow: 0 0 14px rgba(55,220,177,.08); }
+.compatibility-badge.needs-setup { color: #ffd17f; border-color: rgba(255,193,99,.34); background: rgba(255,183,72,.09); }
+.compatibility-badge.incompatible { color: #ff8ba8; border-color: rgba(255,111,149,.34); background: rgba(255,91,136,.09); }
+.github-card-copy { min-height: 91px; margin-top: 13px; }
+.github-card-copy h3 { overflow: hidden; margin: 0 0 7px; color: #edf7ff; font-size: 16px; font-variation-settings: "wght" 650; text-overflow: ellipsis; white-space: nowrap; }
+.github-card-copy p { display: -webkit-box; overflow: hidden; margin: 0; color: #8ca2b8; font-size: 10px; line-height: 1.7; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.github-skill-tags { min-height: 25px; display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.github-skill-tags span { max-width: 105px; overflow: hidden; padding: 2px 6px; color: #839bb1; border: 1px solid rgba(111,173,216,.18); background: rgba(20,40,62,.56); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.github-repository-line { min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px 7px; padding-top: 10px; border-top: 1px solid rgba(106,169,211,.13); color: #5de6ff; }
+.github-repository-line strong { overflow: hidden; color: #afc4d6; font-family: "JetBrains Mono Variable", monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.github-repository-line code { grid-column: 2; overflow: hidden; color: #5e768d; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.github-compatibility-copy { display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; color: #62dfbd; }
+.github-compatibility-copy span, .github-compatibility-copy strong, .github-compatibility-copy small { display: block; min-width: 0; }
+.github-compatibility-copy strong { color: #9fb5c8; font-size: 8px; }
+.github-compatibility-copy small { overflow: hidden; margin-top: 2px; color: #647d94; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.github-skill-card footer { min-height: 34px; display: flex; align-items: center; gap: 11px; margin-top: auto; padding-top: 10px; color: #70869c; border-top: 1px solid rgba(107,168,210,.12); font-family: "JetBrains Mono Variable", monospace; font-size: 8px; }
+.github-skill-card footer > div { display: flex; gap: 4px; margin-left: auto; }
+.github-skill-card footer .ant-btn { height: 28px; padding-inline: 8px; font-family: "Noto Sans SC Variable", sans-serif; font-size: 9px; }
+.github-skeleton { padding-top: 24px; }
+.github-pagination { display: flex; justify-content: flex-end; margin-top: 18px; }
+.github-pagination .ant-pagination-item, .github-pagination .ant-pagination-prev button, .github-pagination .ant-pagination-next button { border-color: rgba(103,176,220,.2) !important; background: rgba(11,28,46,.66) !important; }
+.github-pagination .ant-pagination-item-active { border-color: rgba(79,225,255,.55) !important; box-shadow: 0 0 16px rgba(48,211,255,.11); }
+
+@media (max-width: 1100px) {
+  .github-index-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .github-index-strip > div:first-child { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid rgba(103,171,215,.15); }
+  .github-skill-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .command-eyebrow { align-items: flex-start; flex-direction: column; }
+  .market-source-switch { width: 100%; min-width: 0; }
+  .market-source-switch .ant-segmented-item-label { padding-inline: 7px; font-size: 9px; }
+  .github-index-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .github-index-strip > div { padding: 12px; }
+  .github-index-strip > div:last-child { border-top: 1px solid rgba(103,171,215,.15); }
+  .github-catalog-layout { display: block; }
+  .github-filter-panel { position: static; display: flex; overflow-x: auto; gap: 6px; padding-bottom: 10px; scrollbar-width: none; }
+  .github-filter-panel::-webkit-scrollbar { display: none; }
+  .github-filter-panel .section-label, .host-profile { display: none; }
+  .github-filter-panel > button { width: auto; min-width: max-content; min-height: 34px; border: 1px solid rgba(102,173,218,.2); padding: 0 9px; }
+  .github-filter-panel > button.active { border-color: rgba(75,222,255,.48); }
+  .github-results-toolbar { align-items: stretch; flex-direction: column; gap: 9px; }
+  .github-results-toolbar .ant-select { width: 100%; }
+  .github-card-copy h3 { font-size: 15px; }
+  .github-pagination { justify-content: center; }
+  .github-pagination .ant-pagination-options { display: none; }
+}

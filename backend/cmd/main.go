@@ -63,6 +63,8 @@ func main() {
 	skillSvc := service.NewSkillService(db, cfg)
 	skillHandler := handler.NewSkillHandler(skillSvc)
 	gatewayHandler := handler.NewGatewayHandler(skillSvc, cfg)
+	githubService := service.NewGitHubService(cfg.GitHub)
+	githubHandler := handler.NewGitHubHandler(githubService)
 
 	// 设置 Gin
 	r := gin.Default()
@@ -375,6 +377,9 @@ func main() {
 	r.GET("/api/v1/skills/:id", skillHandler.GetSkill)
 	r.GET("/api/v1/skills/:id/ratings", skillHandler.GetSkillRatings)
 	r.GET("/api/v1/skills/stats/overview", skillHandler.GetStats)
+	r.GET("/api/v1/github/status", githubHandler.Status)
+	r.GET("/api/v1/github/skills/search", githubHandler.SearchSkills)
+	r.GET("/api/v1/github/skills/download", githubHandler.DownloadSkill)
 
 	// ============================================================
 	// 需认证路由
