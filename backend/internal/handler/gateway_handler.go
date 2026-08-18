@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -122,8 +122,8 @@ func (h *GatewayHandler) InvokeSkill(c *gin.Context) {
 	})
 }
 
-// realInvoke 真实调用技能 MCP Server:
-// 以子进程方式执行 seed-skills/<skill_key>/server.py, 通过 STDIO 交换 JSON-RPC
+// realInvoke 真实调用技能服务: HTTP 转发到 SKILL RUNNER
+// POST {SKILL_RUNNER_URL}/<skill_key>/mcp (JSON-RPC 2.0, MCP/2024-11-05)
 func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string, params map[string]interface{}) (map[string]interface{}, error) {
 	// 路径安全: 拒绝穿越
 	if strings.ContainsAny(skillKey, "/\\..") {
@@ -139,11 +139,12 @@ func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string
 		}
 	}
 
-	// 定位技能服务脚本
-	scriptPath := filepath.Join(seedSkillsDir(), skillKey, "server.py")
-	if _, err := os.Stat(scriptPath); err != nil {
-		return nil, fmt.Errorf("技能服务未部署: %s (%s)", skillKey, scriptPath)
+	// 技能服务地址 (docker-compose 中为 http://skill-runner:8081, 本地开发为 http://localhost:8081)
+	baseURL := strings.TrimRight(os.Getenv("SKILL_RUNNER_URL"), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8081"
 	}
+	skillURL := fmt.Sprintf("%s/%s/mcp", baseURL, skillKey)
 
 	// 构造 MCP tools/call 请求
 	reqBody, _ := json.Marshal(map[string]interface{}{
@@ -156,33 +157,31 @@ func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string
 		},
 	})
 
-	// 查找 Python 运行时
-	pythonBin := findPython()
-	if pythonBin == "" {
-		return nil, fmt.Errorf("未找到 Python 运行时 (python/python3/py)")
-	}
-
-	// 执行 MCP Server (STDIO 模式)
+	// HTTP 转发调用技能服务
 	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, pythonBin, scriptPath)
-	cmd.Stdin = strings.NewReader(string(reqBody) + "\n")
-	// 强制 UTF-8 模式, 保证中文参数/输出编码一致
-	cmd.Env = append(os.Environ(), "PYTHONUTF8=1", "PYTHONIOENCODING=utf-8")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	httpReq, err := http.NewRequestWithContext(cmdCtx, http.MethodPost, skillURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("构造请求失败: %v", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("技能执行异常: %v (%s)", err, strings.TrimSpace(stderr.String()))
+	httpResp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("技能服务不可达 (%s): %v", skillURL, err)
+	}
+	defer httpResp.Body.Close()
+
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("读取技能响应失败: %v", err)
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("技能服务返回 %d: %s", httpResp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 
-	// 解析 MCP 响应 (取最后一个 JSON 行)
-	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) == 0 {
-		return nil, fmt.Errorf("技能无返回")
-	}
+	// 解析 MCP 响应
 	var resp struct {
 		Result *struct {
 			Content []struct {
@@ -195,7 +194,7 @@ func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &resp); err != nil {
+	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return nil, fmt.Errorf("技能返回解析失败: %v", err)
 	}
 	if resp.Error != nil {
@@ -218,36 +217,8 @@ func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string
 	}, nil
 }
 
-// findPython 查找可用的 Python 运行时 (跳过 Microsoft Store stub)
-func findPython() string {
-	// 1. PATH 中的 python, 但排除 WindowsApps 的 Store stub
-	for _, name := range []string{"python", "python3"} {
-		if p, err := exec.LookPath(name); err == nil {
-			if !strings.Contains(strings.ToLower(p), "windowsapps") {
-				return p
-			}
-		}
-	}
-	// 2. Windows py launcher
-	if p, err := exec.LookPath("py"); err == nil {
-		return p
-	}
-	// 3. 常见安装路径
-	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		for _, ver := range []string{"Python312", "Python311", "Python310", "Python39"} {
-			p := filepath.Join(localAppData, "Programs", "Python", ver, "python.exe")
-			if _, err := os.Stat(p); err == nil {
-				return p
-			}
-		}
-	}
-	for _, p := range []string{"C:\\Python312\\python.exe", "C:\\Python311\\python.exe", "C:\\Python310\\python.exe", "C:\\Python39\\python.exe"} {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
-}
+// findPython 查找可用的 Python 运行时 (已废弃: 改为 HTTP 转发 skill-runner)
+
 
 func (h *GatewayHandler) recordAudit(traceID, skillKey, userID, status string, durationMs int, sourceIP string, pii bool) {
 	_ = h.svc.RecordAudit(&model.AuditLog{

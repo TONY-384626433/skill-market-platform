@@ -110,6 +110,14 @@ services:
     cap_add:
       - IPC_LOCK
 
+  # ==================== 技能运行服务 (4 个 MCP 技能) ====================
+  skill-runner:
+    build: ../seed-skills
+    container_name: skillhub-runner
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

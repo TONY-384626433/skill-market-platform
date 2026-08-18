@@ -9,23 +9,21 @@
 ## 快速开始
 
 ```bash
-# 1. 启动基础设施
-cd docker && docker compose up -d
+# 1. 一键启动全部基础设施 + 技能运行服务 (PostgreSQL + Redis + ES + MinIO + RabbitMQ + Vault + skill-runner)
+cd docker && docker compose up -d --build
 
 # 2. 启动后端 API (需要 Go 1.21+)
 cd backend && go run cmd/main.go
 
 # 3. 启动前端 (需要 Node 18+)
 cd frontend && npm install && npm start
-
-# 4. 启动种子技能 (4 个终端)
-cd seed-skills/db-inspection && python server.py
-cd seed-skills/log-desensitization && python server.py
-cd seed-skills/alert-convergence && python server.py
-cd seed-skills/requirement-analysis && python server.py
 ```
 
 打开 http://localhost:3000 即可访问。
+
+> 技能运行服务 (skill-runner, 端口 8081) 已通过 Docker 容器化运行, 内置 4 个 MCP 技能:
+> db-inspection / log-desensitization / alert-convergence / requirement-analysis。
+> 后端网关通过 HTTP 转发 (JSON-RPC over MCP/2024-11-05) 真实调用技能。
 
 ## 项目结构
 
@@ -33,7 +31,7 @@ cd seed-skills/requirement-analysis && python server.py
 skill-market-platform/
 ├── README.md                   # 本文件
 ├── docker/                     # 基础设施
-│   ├── docker-compose.yml      # PostgreSQL + Redis + ES + MinIO + RabbitMQ
+│   ├── docker-compose.yml      # PostgreSQL + Redis + ES + MinIO + RabbitMQ + Vault + skill-runner
 │   └── .env.example
 ├── backend/                    # 后端 API (Go + Gin)
 │   ├── cmd/main.go             # 入口
