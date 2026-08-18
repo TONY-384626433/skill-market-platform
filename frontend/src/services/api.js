@@ -36,6 +36,10 @@ export const getCategories = () => api.get('/skills/categories');
 export const getStats = () => api.get('/skills/stats/overview');
 export const getGitHubStatus = () => api.get('/github/status');
 export const searchGitHubSkills = (params) => api.get('/github/skills/search', { params, timeout: 45000 });
+export const getGitHubSkillPreview = (skill) => api.get('/github/skills/preview', {
+  params: { repo: skill.repository, ref: skill.ref, path: skill.path },
+  timeout: 30000,
+});
 export const getGitHubSkillDownloadURL = (skill) => {
   const base = (import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '');
   const params = new URLSearchParams({ repo: skill.repository, ref: skill.ref, path: skill.path });

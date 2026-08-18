@@ -36,6 +36,16 @@ func (h *GitHubHandler) SearchSkills(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h *GitHubHandler) PreviewSkill(c *gin.Context) {
+	preview, err := h.service.PreviewSkill(c.Request.Context(), c.Query("repo"), c.Query("ref"), c.Query("path"))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Cache-Control", "private, max-age=300")
+	c.JSON(http.StatusOK, preview)
+}
+
 func (h *GitHubHandler) DownloadSkill(c *gin.Context) {
 	filename, archive, err := h.service.BuildArchive(c.Request.Context(), c.Query("repo"), c.Query("ref"), c.Query("path"))
 	if err != nil {

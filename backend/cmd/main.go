@@ -379,6 +379,7 @@ func main() {
 	r.GET("/api/v1/skills/stats/overview", skillHandler.GetStats)
 	r.GET("/api/v1/github/status", githubHandler.Status)
 	r.GET("/api/v1/github/skills/search", githubHandler.SearchSkills)
+	r.GET("/api/v1/github/skills/preview", githubHandler.PreviewSkill)
 	r.GET("/api/v1/github/skills/download", githubHandler.DownloadSkill)
 
 	// ============================================================

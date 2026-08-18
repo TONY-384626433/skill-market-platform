@@ -7,7 +7,7 @@
 ## 产品能力
 
 - 技能市场：关键词、分类、接入形态和排序筛选，展示版本、稳定性、维护团队、安装量与评分。
-- GitHub 开源索引：搜索公开 `SKILL.md`，解析元数据与类别，按本机操作系统和运行时标注安装兼容性，并下载单个 Skill ZIP。
+- GitHub 开源索引：搜索公开 `SKILL.md`，解析元数据与类别，按本机操作系统和运行时标注安装兼容性；下载前可在只读抽屉中预览渲染文档与原始源码。
 - 技能详情：能力说明、结构化接口、权限声明、调用示例、在线试玩和用户评价。
 - 安装管理：生成独立访问令牌、查看令牌前缀、撤销授权和安全重新安装。
 - 开发者工作台：分步提交 Manifest、接口定义、依赖和权限，查看审核状态与整改意见。
@@ -57,7 +57,7 @@ $env:GITHUB_TOKEN = gh auth token
 go run ./cmd
 ```
 
-没有 Token 时会降级为公开仓库搜索。GitHub Code Search 对单个查询最多开放前 1000 条结果，可通过关键词继续缩小范围。兼容性探针会检测 Windows/Linux/macOS、CPU 架构及 Node.js、Python、Docker、Go、Rust、Bash、PowerShell 等运行时，并区分“本机可安装”“需要配置”和“当前不兼容”。下载接口只打包对应 Skill 目录；目录超过 160 个文件或 20 MB 时自动降级为 `SKILL.md` 与安全说明，不执行任何第三方代码。
+没有 Token 时会降级为公开仓库搜索。GitHub Code Search 对单个查询最多开放前 1000 条结果，可通过关键词继续缩小范围。兼容性探针会检测 Windows/Linux/macOS、CPU 架构及 Node.js、Python、Docker、Go、Rust、Bash、PowerShell 等运行时，并区分“本机可安装”“需要配置”和“当前不兼容”。点击技能卡会先以只读方式加载 `SKILL.md`，可切换渲染预览与原始源码；预览成功后才开放下载。下载接口只打包对应 Skill 目录；目录超过 160 个文件或 20 MB 时自动降级为 `SKILL.md` 与安全说明，不执行任何第三方代码。
 
 ## 演示账号
 
@@ -101,6 +101,7 @@ go run ./cmd
 | `GET` | `/api/v1/skills/stats/overview` | 公开 | 实时运营指标 |
 | `GET` | `/api/v1/github/status` | 公开 | GitHub 连接与本机运行时状态 |
 | `GET` | `/api/v1/github/skills/search` | 公开 | 搜索 GitHub 公开 Skill |
+| `GET` | `/api/v1/github/skills/preview` | 公开 | 只读预览单个公开 `SKILL.md` |
 | `GET` | `/api/v1/github/skills/download` | 公开 | 下载单个公开 Skill ZIP |
 | `POST` | `/api/v1/skills/:id/install` | 登录 | 安装并签发令牌 |
 | `GET` | `/api/v1/skills/my/installations` | 登录 | 我的安装 |

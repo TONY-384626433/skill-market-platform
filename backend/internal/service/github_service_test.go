@@ -78,3 +78,21 @@ func TestArchivePathSelection(t *testing.T) {
 		t.Fatal("expected root scripts to be selected")
 	}
 }
+
+func TestNormalizeSkillLocator(t *testing.T) {
+	repository, ref, skillPath, err := normalizeSkillLocator(" owner/repo ", "main", "skills/browser/SKILL.md")
+	if err != nil || repository != "owner/repo" || ref != "main" || skillPath != "skills/browser/SKILL.md" {
+		t.Fatalf("unexpected normalized locator: %q %q %q %v", repository, ref, skillPath, err)
+	}
+	invalid := [][3]string{
+		{"invalid", "main", "SKILL.md"},
+		{"owner/repo", "../main", "SKILL.md"},
+		{"owner/repo", "main", "../SKILL.md"},
+		{"owner/repo", "main", "README.md"},
+	}
+	for _, input := range invalid {
+		if _, _, _, err := normalizeSkillLocator(input[0], input[1], input[2]); err == nil {
+			t.Fatalf("expected locator to be rejected: %#v", input)
+		}
+	}
+}

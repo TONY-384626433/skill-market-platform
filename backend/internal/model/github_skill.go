@@ -47,6 +47,23 @@ type GitHubSkill struct {
 	DownloadEnabled bool                `json:"download_enabled"`
 }
 
+// GitHubSkillPreview contains the source document used for a read-only review.
+type GitHubSkillPreview struct {
+	Repository            string              `json:"repository"`
+	Ref                   string              `json:"ref"`
+	Path                  string              `json:"path"`
+	Name                  string              `json:"name"`
+	Description           string              `json:"description"`
+	License               string              `json:"license,omitempty"`
+	DeclaredCompatibility string              `json:"declared_compatibility,omitempty"`
+	Content               string              `json:"content"`
+	Body                  string              `json:"body"`
+	SizeBytes             int                 `json:"size_bytes"`
+	LineCount             int                 `json:"line_count"`
+	Compatibility         GitHubCompatibility `json:"compatibility"`
+	SecurityNotice        string              `json:"security_notice"`
+}
+
 // GitHubRateLimit exposes enough quota information for the UI to be honest.
 type GitHubRateLimit struct {
 	Limit     int   `json:"limit"`

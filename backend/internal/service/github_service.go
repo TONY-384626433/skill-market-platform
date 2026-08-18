@@ -500,22 +500,65 @@ func buildGitHubTags(repository githubRepository, requirements []string, format 
 	return tags[:minInt(6, len(tags))]
 }
 
-func (s *GitHubService) BuildArchive(ctx context.Context, repository, ref, skillPath string) (string, []byte, error) {
+func normalizeSkillLocator(repository, ref, skillPath string) (string, string, string, error) {
 	repository = strings.TrimSpace(repository)
 	ref = strings.TrimSpace(ref)
 	skillPath = strings.TrimPrefix(pathpkg.Clean(strings.TrimSpace(skillPath)), "./")
 	if !githubRepoPattern.MatchString(repository) {
-		return "", nil, errors.New("仓库地址格式无效")
+		return "", "", "", errors.New("仓库地址格式无效")
 	}
 	if !githubRefPattern.MatchString(ref) || strings.Contains(ref, "..") {
-		return "", nil, errors.New("分支名称无效")
+		return "", "", "", errors.New("分支名称无效")
 	}
 	if skillPath == "." || strings.HasPrefix(skillPath, "/") || strings.HasPrefix(skillPath, "../") || !strings.EqualFold(pathpkg.Base(skillPath), "SKILL.md") {
-		return "", nil, errors.New("Skill 路径无效")
+		return "", "", "", errors.New("Skill 路径无效")
+	}
+	return repository, ref, skillPath, nil
+}
+
+// PreviewSkill retrieves a SKILL.md as inert text for review before download.
+func (s *GitHubService) PreviewSkill(ctx context.Context, repository, ref, skillPath string) (*model.GitHubSkillPreview, error) {
+	repository, ref, skillPath, err := normalizeSkillLocator(repository, ref, skillPath)
+	if err != nil {
+		return nil, err
+	}
+	content, err := s.fetchRaw(ctx, repository, ref, skillPath, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	frontmatter, body := parseSkillDocument(string(content))
+	name := titleCaseSkillName(fallbackString(frontmatter.Name, pathpkg.Base(pathpkg.Dir(skillPath))))
+	if name == "." || strings.TrimSpace(name) == "" {
+		name = titleCaseSkillName(pathpkg.Base(repository))
+	}
+	description := fallbackDescription(frontmatter.Description, firstProseParagraph(body))
+	compatibility := s.compatibilityFor(string(content), frontmatter.Compatibility)
+	return &model.GitHubSkillPreview{
+		Repository:            repository,
+		Ref:                   ref,
+		Path:                  skillPath,
+		Name:                  name,
+		Description:           description,
+		License:               frontmatter.License,
+		DeclaredCompatibility: frontmatter.Compatibility,
+		Content:               string(content),
+		Body:                  body,
+		SizeBytes:             len(content),
+		LineCount:             strings.Count(string(content), "\n") + 1,
+		Compatibility:         compatibility,
+		SecurityNotice:        "内容来自 GitHub 公开仓库，SkillHub 仅做静态预览与运行时兼容性提示，未执行其中脚本，也不代表通过安全审核。",
+	}, nil
+}
+
+func (s *GitHubService) BuildArchive(ctx context.Context, repository, ref, skillPath string) (string, []byte, error) {
+	var err error
+	repository, ref, skillPath, err = normalizeSkillLocator(repository, ref, skillPath)
+	if err != nil {
+		return "", nil, err
 	}
 
 	var tree githubTreeResponse
-	_, err := s.apiGetJSON(ctx, "/repos/"+repository+"/git/trees/"+url.PathEscape(ref)+"?recursive=1", &tree)
+	_, err = s.apiGetJSON(ctx, "/repos/"+repository+"/git/trees/"+url.PathEscape(ref)+"?recursive=1", &tree)
 	if err != nil {
 		return "", nil, err
 	}

@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Pagination, Select, Skeleton, Tag, Tooltip } from 'antd';
+import { Alert, Button, Drawer, Empty, Pagination, Select, Skeleton, Spin, Tabs, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled, CloseCircleFilled, CloudDownloadOutlined, CodeOutlined,
-  ExclamationCircleFilled, GithubOutlined, LinkOutlined, ReloadOutlined,
-  SafetyCertificateOutlined, StarFilled,
+  CopyOutlined, ExclamationCircleFilled, EyeOutlined, FileTextOutlined, GithubOutlined,
+  LinkOutlined, ReloadOutlined, SafetyCertificateOutlined, StarFilled,
 } from '@ant-design/icons';
-import { getGitHubSkillDownloadURL, searchGitHubSkills } from '../services/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { getGitHubSkillDownloadURL, getGitHubSkillPreview, searchGitHubSkills } from '../services/api';
 import { formatNumber } from '../utils/format';
 
 const compatibilityMeta = {
@@ -18,13 +20,19 @@ function RuntimePill({ name, available }) {
   return <span className={available ? 'available' : 'missing'}><i />{name}</span>;
 }
 
-function GitHubSkillCard({ skill }) {
+function formatBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+}
+
+function GitHubSkillCard({ skill, onPreview }) {
   const compatibility = compatibilityMeta[skill.compatibility?.status] || compatibilityMeta.needs_setup;
   const CompatibilityIcon = compatibility.icon;
   const reasons = skill.compatibility?.reasons?.join('；') || '等待兼容性检测';
 
   return (
-    <article className="github-skill-card">
+    <article className="github-skill-card" role="button" tabIndex={0} aria-label={`预览 ${skill.name}`} onClick={() => onPreview(skill)} onKeyDown={(event) => event.key === 'Enter' && event.target === event.currentTarget && onPreview(skill)}>
       <div className="github-card-head">
         <span className="github-skill-icon"><GithubOutlined /></span>
         <div className="github-card-badges"><Tag>{skill.format}</Tag>{skill.license && <Tag>{skill.license}</Tag>}</div>
@@ -41,11 +49,95 @@ function GitHubSkillCard({ skill }) {
         <span><StarFilled className="rating-star" /> {formatNumber(skill.stars)}</span>
         {skill.language && <span><CodeOutlined /> {skill.language}</span>}
         <div>
-          <Tooltip title="查看 GitHub 源码"><Button type="text" icon={<LinkOutlined />} href={skill.skill_url || skill.repository_url} target="_blank" rel="noreferrer" /></Tooltip>
-          <Button type="primary" icon={<CloudDownloadOutlined />} href={getGitHubSkillDownloadURL(skill)} disabled={!skill.download_enabled}>下载 Skill</Button>
+          <Tooltip title="查看 GitHub 源码"><Button type="text" icon={<LinkOutlined />} href={skill.skill_url || skill.repository_url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} /></Tooltip>
+          <Button type="primary" icon={<EyeOutlined />} onClick={(event) => { event.stopPropagation(); onPreview(skill); }}>预览详情</Button>
         </div>
       </footer>
     </article>
+  );
+}
+
+function GitHubSkillPreview({ skill, open, onClose }) {
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('rendered');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!open || !skill) return undefined;
+    let active = true;
+    setPreview(null);
+    setError('');
+    setLoading(true);
+    setActiveTab('rendered');
+    setCopied(false);
+    getGitHubSkillPreview(skill)
+      .then((response) => { if (active) setPreview(response); })
+      .catch((requestError) => { if (active) setError(requestError.response?.data?.error || requestError.message || '预览内容加载失败'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [open, skill]);
+
+  if (!skill) return null;
+  const compatibility = compatibilityMeta[skill.compatibility?.status] || compatibilityMeta.needs_setup;
+  const CompatibilityIcon = compatibility.icon;
+  const reasons = skill.compatibility?.reasons?.join('；') || '等待兼容性检测';
+  const requirements = skill.compatibility?.requirements || [];
+  const copySource = async () => {
+    if (!preview?.content) return;
+    try {
+      await navigator.clipboard.writeText(preview.content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch { setCopied(false); }
+  };
+  const markdown = preview?.body || preview?.content || '';
+  const markdownView = loading ? (
+    <div className="github-preview-loading"><Spin /><span>正在安全读取 SKILL.md</span></div>
+  ) : error ? (
+    <div className="state-panel github-preview-error"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error} /><Button icon={<ReloadOutlined />} onClick={() => { setError(''); setLoading(true); getGitHubSkillPreview(skill).then(setPreview).catch((requestError) => setError(requestError.response?.data?.error || '预览内容加载失败')).finally(() => setLoading(false)); }}>重新加载</Button></div>
+  ) : (
+    <div className="github-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noreferrer">{children}</a> }}>{markdown}</ReactMarkdown></div>
+  );
+
+  return (
+    <Drawer
+      className="github-preview-drawer"
+      open={open}
+      onClose={onClose}
+      width={920}
+      destroyOnHidden
+      title={<span className="github-preview-title"><GithubOutlined /><span><strong>Skill 项目预览</strong><small>{skill.repository}</small></span></span>}
+      extra={<Button type="text" icon={<LinkOutlined />} href={skill.skill_url || skill.repository_url} target="_blank" rel="noreferrer">GitHub</Button>}
+      footer={<div className="github-preview-footer"><span><SafetyCertificateOutlined /> 请先审阅来源、权限与脚本内容</span><div><Button onClick={onClose}>暂不下载</Button><Button type="primary" icon={<CloudDownloadOutlined />} href={preview ? getGitHubSkillDownloadURL(skill) : undefined} disabled={!preview || !skill.download_enabled}>确认并下载 Skill</Button></div></div>}
+    >
+      <div className="github-preview-shell">
+        <header className="github-preview-hero">
+          <span className="github-preview-icon"><FileTextOutlined /></span>
+          <div><div className="github-preview-tags"><Tag>{skill.format}</Tag><Tag>{skill.category}</Tag>{skill.license && <Tag>{skill.license}</Tag>}</div><h2>{preview?.name || skill.name}</h2><p>{preview?.description || skill.description}</p></div>
+          <span className={`compatibility-badge ${compatibility.tone}`}><CompatibilityIcon />{skill.compatibility?.label}</span>
+        </header>
+
+        <Alert className="github-preview-notice" type="warning" showIcon message={preview?.security_notice || '第三方公开内容正在以只读方式预览，不会执行仓库中的代码。'} />
+
+        <div className="github-preview-layout">
+          <main className="github-preview-document">
+            <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
+              { key: 'rendered', label: '内容预览', children: markdownView },
+              { key: 'source', label: '原始 SKILL.md', children: loading ? markdownView : <div className="github-raw-source"><Button icon={<CopyOutlined />} onClick={copySource}>{copied ? '已复制' : '复制源码'}</Button><pre>{preview?.content || error || '暂无原始内容'}</pre></div> },
+            ]} />
+          </main>
+
+          <aside className="github-preview-aside">
+            <section className={`preview-verdict ${compatibility.tone}`}><span><CompatibilityIcon /></span><div><small>本机安装判定</small><strong>{skill.compatibility?.label}</strong><p>{reasons}</p></div></section>
+            <section><h3>项目档案</h3><dl><div><dt>仓库</dt><dd>{skill.repository}</dd></div><div><dt>分支</dt><dd>{skill.ref}</dd></div><div><dt>文件</dt><dd>{skill.path}</dd></div><div><dt>大小</dt><dd>{preview ? formatBytes(preview.size_bytes) : '--'}</dd></div><div><dt>行数</dt><dd>{preview?.line_count || '--'}</dd></div><div><dt>Stars</dt><dd>{formatNumber(skill.stars)}</dd></div></dl></section>
+            <section><h3>运行要求</h3><div className="preview-requirements">{requirements.length ? requirements.map((item) => <span key={item}>{item}</span>) : <span>未检测到额外运行时</span>}</div>{preview?.declared_compatibility && <p className="preview-declared">仓库声明：{preview.declared_compatibility}</p>}</section>
+            <section className="preview-review-checklist"><h3>下载前检查</h3><p><i />确认仓库所有者与许可证</p><p><i />检查脚本所需文件及网络权限</p><p><i />不要向未知 Skill 提供敏感凭据</p></section>
+          </aside>
+        </div>
+      </div>
+    </Drawer>
   );
 }
 
@@ -56,6 +148,7 @@ export default function GitHubCatalog({ query, searchVersion }) {
   const [compatibility, setCompatibility] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [previewSkill, setPreviewSkill] = useState(null);
   const [reloadVersion, setReloadVersion] = useState(0);
   const criteriaRef = useRef(`${query}|${searchVersion}`);
 
@@ -131,11 +224,12 @@ export default function GitHubCatalog({ query, searchVersion }) {
             <div className="state-panel"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error} /><Button icon={<ReloadOutlined />} onClick={() => setReloadVersion((value) => value + 1)}>重新连接 GitHub</Button></div>
           ) : visibleSkills.length === 0 ? (
             <div className="state-panel"><Empty description="当前页没有符合筛选条件的技能" /><Button onClick={() => { setCategory(''); setCompatibility(''); }}>清除兼容性筛选</Button></div>
-          ) : <div className="github-skill-grid">{visibleSkills.map((skill) => <GitHubSkillCard key={skill.id} skill={skill} />)}</div>}
+          ) : <div className="github-skill-grid">{visibleSkills.map((skill) => <GitHubSkillCard key={skill.id} skill={skill} onPreview={setPreviewSkill} />)}</div>}
 
           {!loading && !error && availableTotal > result.page_size && <Pagination className="github-pagination" current={page} pageSize={result.page_size || 12} total={availableTotal} showSizeChanger={false} showQuickJumper onChange={(nextPage) => { setPage(nextPage); window.scrollTo({ top: 520, behavior: 'smooth' }); }} />}
         </div>
       </div>
+      <GitHubSkillPreview skill={previewSkill} open={Boolean(previewSkill)} onClose={() => setPreviewSkill(null)} />
     </section>
   );
 }
