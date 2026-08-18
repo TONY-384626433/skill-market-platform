@@ -35,6 +35,26 @@ api.interceptors.response.use(
 export const login = (username, password) =>
   api.post('/auth/login', { username, password });
 
+// 发送验证码 (channel: phone / email)
+export const sendCode = (channel, target) =>
+  api.post('/auth/send-code', { channel, target });
+
+// 注册 (手机号/邮箱 + 验证码)
+export const register = (data) =>
+  api.post('/auth/register', data);
+
+// 手机验证码登录 (无账号自动创建)
+export const phoneLogin = (phone, code) =>
+  api.post('/auth/phone-login', { phone, code });
+
+// 第三方快捷登录 (provider: wechat / qq)
+export const oauthLogin = (provider, nickname) =>
+  api.post('/auth/oauth', { provider, nickname });
+
+// 快捷登录 (mode: scan / guest)
+export const quickLogin = (mode = 'guest') =>
+  api.post('/auth/quick', { mode });
+
 // ============================================================
 // 技能市场
 // ============================================================

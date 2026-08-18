@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -14,6 +17,18 @@ import (
 	"github.com/jjbank/skill-market/internal/middleware"
 	"github.com/jjbank/skill-market/internal/service"
 )
+
+// ============================================================
+// 验证码存储 (演示用, 内存实现; 生产环境请接入短信/邮件服务)
+// ============================================================
+var codeStore = struct {
+	sync.RWMutex
+	m map[string]string // key: phone/email -> code
+}{m: make(map[string]string)}
+
+func generateCode() string {
+	return fmt.Sprintf("%06d", rand.Intn(1000000))
+}
 
 func main() {
 	// 加载配置
@@ -30,6 +45,11 @@ func main() {
 		log.Fatalf("数据库 Ping 失败: %v", err)
 	}
 	log.Println("✅ 数据库连接成功")
+
+	// 兼容旧库: 补充 users.phone 列 (幂等)
+	if _, err := db.Exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)`); err != nil {
+		log.Printf("⚠ 补充 users.phone 列失败(可忽略): %v", err)
+	}
 
 	// 初始化服务
 	skillSvc := service.NewSkillService(db, cfg)
@@ -82,6 +102,245 @@ func main() {
 				"id":       userID,
 				"username": req.Username,
 				"role":     role,
+			},
+		})
+	})
+
+	// ============================================================
+	// 认证体系: 注册 / 验证码 / 第三方 / 快捷登录 (演示实现)
+	// ============================================================
+
+	// 发送验证码 (演示: 验证码直接返回, 便于演示环境使用)
+	r.POST("/api/v1/auth/send-code", func(c *gin.Context) {
+		var req struct {
+			Channel string `json:"channel" binding:"required"` // phone / email
+			Target  string `json:"target" binding:"required"`  // 手机号或邮箱
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+		code := generateCode()
+		codeStore.Lock()
+		codeStore.m[req.Target] = code
+		codeStore.Unlock()
+
+		c.JSON(http.StatusOK, gin.H{
+			"message":    "验证码已发送",
+			"dev_code":   code, // 演示环境直接返回, 生产环境请接入短信/邮件服务
+			"expires_in": 300,
+		})
+	})
+
+	// 注册 (手机号/邮箱 + 验证码)
+	r.POST("/api/v1/auth/register", func(c *gin.Context) {
+		var req struct {
+			Channel     string `json:"channel" binding:"required"` // phone / email
+			Target      string `json:"target" binding:"required"`  // 手机号或邮箱
+			Code        string `json:"code" binding:"required"`
+			Username    string `json:"username" binding:"required,min=3,max=32"`
+			Password    string `json:"password"`
+			DisplayName string `json:"display_name"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+
+		// 校验验证码
+		codeStore.RLock()
+		stored, ok := codeStore.m[req.Target]
+		codeStore.RUnlock()
+		if !ok || stored != req.Code {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "验证码错误或已过期"})
+			return
+		}
+
+		// 检查用户名唯一
+		var exists string
+		_ = db.QueryRow(`SELECT id FROM users WHERE username=$1`, req.Username).Scan(&exists)
+		if exists != "" {
+			c.JSON(http.StatusConflict, gin.H{"error": "用户名已被占用"})
+			return
+		}
+
+		// 检查手机号/邮箱是否已注册
+		var dup string
+		if req.Channel == "phone" {
+			_ = db.QueryRow(`SELECT id FROM users WHERE phone=$1`, req.Target).Scan(&dup)
+		} else {
+			_ = db.QueryRow(`SELECT id FROM users WHERE email=$1`, req.Target).Scan(&dup)
+		}
+		if dup != "" {
+			c.JSON(http.StatusConflict, gin.H{"error": "该手机号/邮箱已注册, 请直接登录"})
+			return
+		}
+
+		displayName := req.DisplayName
+		if displayName == "" {
+			displayName = req.Username
+		}
+
+		// TODO: 生产环境请对接 LDAP / 密码加密存储
+		var userID string
+		if req.Channel == "phone" {
+			err := db.QueryRow(`INSERT INTO users (username, display_name, phone, department, role) VALUES ($1,$2,$3,$4,'user') RETURNING id`,
+				req.Username, displayName, req.Target, "").Scan(&userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败: " + err.Error()})
+				return
+			}
+		} else {
+			err := db.QueryRow(`INSERT INTO users (username, display_name, email, department, role) VALUES ($1,$2,$3,$4,'user') RETURNING id`,
+				req.Username, displayName, req.Target, "").Scan(&userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "注册失败: " + err.Error()})
+				return
+			}
+		}
+
+		// 清除验证码
+		codeStore.Lock()
+		delete(codeStore.m, req.Target)
+		codeStore.Unlock()
+
+		token, _ := handler.GenerateToken(&cfg.JWT, userID, req.Username, "user", "")
+		c.JSON(http.StatusOK, gin.H{
+			"token":      token,
+			"token_type": "Bearer",
+			"expires_in": cfg.JWT.ExpireHour * 3600,
+			"user": gin.H{
+				"id":       userID,
+				"username": req.Username,
+				"role":     "user",
+			},
+		})
+	})
+
+	// 手机验证码登录 (无账号自动创建)
+	r.POST("/api/v1/auth/phone-login", func(c *gin.Context) {
+		var req struct {
+			Phone string `json:"phone" binding:"required"`
+			Code  string `json:"code" binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+
+		codeStore.RLock()
+		stored, ok := codeStore.m[req.Phone]
+		codeStore.RUnlock()
+		if !ok || stored != req.Code {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "验证码错误或已过期"})
+			return
+		}
+
+		// 查手机号用户, 不存在则自动创建
+		var userID, username, role string
+		err := db.QueryRow(`SELECT id, username, role FROM users WHERE phone=$1`, req.Phone).Scan(&userID, &username, &role)
+		if err == sql.ErrNoRows {
+			username = fmt.Sprintf("user_%s", req.Phone[len(req.Phone)-4:])
+			err = db.QueryRow(`INSERT INTO users (username, display_name, phone, department, role) VALUES ($1,$2,$3,$4,'user') RETURNING id`,
+				username, "手机用户"+req.Phone[len(req.Phone)-4:], req.Phone, "").Scan(&userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败: " + err.Error()})
+				return
+			}
+			role = "user"
+		}
+
+		codeStore.Lock()
+		delete(codeStore.m, req.Phone)
+		codeStore.Unlock()
+
+		token, _ := handler.GenerateToken(&cfg.JWT, userID, username, role, "")
+		c.JSON(http.StatusOK, gin.H{
+			"token":      token,
+			"token_type": "Bearer",
+			"expires_in": cfg.JWT.ExpireHour * 3600,
+			"user": gin.H{
+				"id":       userID,
+				"username": username,
+				"role":     role,
+			},
+		})
+	})
+
+	// 第三方快捷登录 (微信/QQ, 演示: 模拟 OAuth 回调, 自动建号)
+	r.POST("/api/v1/auth/oauth", func(c *gin.Context) {
+		var req struct {
+			Provider string `json:"provider" binding:"required"` // wechat / qq
+			OpenID   string `json:"open_id"`
+			Nickname string `json:"nickname"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+			return
+		}
+
+		openID := req.OpenID
+		if openID == "" {
+			openID = fmt.Sprintf("%08x", rand.Int63())
+		}
+		username := fmt.Sprintf("%s_%s", req.Provider, openID)
+
+		var userID, role string
+		err := db.QueryRow(`SELECT id, role FROM users WHERE username=$1`, username).Scan(&userID, &role)
+		if err == sql.ErrNoRows {
+			nickname := req.Nickname
+			if nickname == "" {
+				nickname = map[string]string{"wechat": "微信用户", "qq": "QQ用户"}[req.Provider]
+			}
+			err = db.QueryRow(`INSERT INTO users (username, display_name, department, role) VALUES ($1,$2,$3,'user') RETURNING id`,
+				username, nickname, "").Scan(&userID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败: " + err.Error()})
+				return
+			}
+			role = "user"
+		}
+
+		token, _ := handler.GenerateToken(&cfg.JWT, userID, username, role, "")
+		c.JSON(http.StatusOK, gin.H{
+			"token":      token,
+			"token_type": "Bearer",
+			"expires_in": cfg.JWT.ExpireHour * 3600,
+			"user": gin.H{
+				"id":       userID,
+				"username": username,
+				"role":     role,
+			},
+		})
+	})
+
+	// 快捷登录 (演示: 扫码模拟 / 游客体验)
+	r.POST("/api/v1/auth/quick", func(c *gin.Context) {
+		var req struct {
+			Mode string `json:"mode"` // scan / guest
+		}
+		if req.Mode == "" {
+			req.Mode = "guest"
+		}
+
+		username := fmt.Sprintf("guest_%d", time.Now().UnixNano()%1000000)
+		var userID string
+		err := db.QueryRow(`INSERT INTO users (username, display_name, department, role) VALUES ($1,$2,$3,'user') RETURNING id`,
+			username, "访客用户", "").Scan(&userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "登录失败: " + err.Error()})
+			return
+		}
+
+		token, _ := handler.GenerateToken(&cfg.JWT, userID, username, "user", "")
+		c.JSON(http.StatusOK, gin.H{
+			"token":      token,
+			"token_type": "Bearer",
+			"expires_in": cfg.JWT.ExpireHour * 3600,
+			"user": gin.H{
+				"id":       userID,
+				"username": username,
+				"role":     "user",
 			},
 		})
 	})

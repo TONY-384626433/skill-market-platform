@@ -1330,6 +1330,140 @@ body {
   box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
 }
 
+/* ============ 登录/注册页扩展 ============ */
+.auth-mode-switch {
+  display: flex;
+  background: rgba(13, 20, 44, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 10px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.auth-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.auth-mode-btn:hover { color: var(--cyan-bright); }
+
+.auth-mode-btn.active {
+  background: var(--gradient-cyan);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.35);
+}
+
+.code-input {
+  display: flex;
+  gap: 10px;
+}
+
+.code-input .ant-input {
+  flex: 1;
+}
+
+.code-btn {
+  white-space: nowrap;
+  border: 1px solid rgba(34, 211, 238, 0.4) !important;
+  color: var(--cyan-bright) !important;
+  background: rgba(34, 211, 238, 0.06) !important;
+  border-radius: 10px !important;
+  font-weight: 600;
+  transition: all 0.3s ease !important;
+}
+
+.code-btn:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.14) !important;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.3) !important;
+  border-color: var(--cyan) !important;
+}
+
+.code-btn:disabled { opacity: 0.55; color: var(--text-dim) !important; border-color: rgba(148,163,184,0.25) !important; background: transparent !important; }
+
+.oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 22px 0 16px;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+}
+
+.oauth-divider::before,
+.oauth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.25), transparent);
+}
+
+.oauth-row {
+  display: flex;
+  justify-content: center;
+  gap: 26px;
+  margin: 6px 0 2px;
+}
+
+.oauth-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(13, 20, 44, 0.6);
+  color: var(--text-secondary);
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.oauth-btn:hover {
+  transform: translateY(-3px) scale(1.06);
+}
+
+.oauth-btn.wechat:hover { color: #07c160; border-color: #07c160; box-shadow: 0 0 18px rgba(7, 193, 96, 0.4); }
+.oauth-btn.qq:hover { color: #12b7f5; border-color: #12b7f5; box-shadow: 0 0 18px rgba(18, 183, 245, 0.4); }
+.oauth-btn.mail:hover { color: #f59e0b; border-color: #f59e0b; box-shadow: 0 0 18px rgba(245, 158, 11, 0.4); }
+.oauth-btn.scan:hover { color: var(--violet-bright); border-color: var(--violet); box-shadow: 0 0 18px rgba(139, 92, 246, 0.4); }
+
+.oauth-label {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  margin-top: 8px;
+  letter-spacing: 1px;
+  font-family: var(--font-mono);
+}
+
+.quick-guest {
+  display: block;
+  text-align: center;
+  margin-top: 18px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.quick-guest:hover {
+  color: var(--cyan-bright);
+  text-shadow: 0 0 12px rgba(34, 211, 238, 0.4);
+}
+
 /* 响应式 */
 @media (max-width: 900px) {
   .nexus-content { padding: 20px; }
