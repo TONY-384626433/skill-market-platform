@@ -432,6 +432,23 @@ func (s *SkillService) GetAuditLogs(userID string, page, pageSize int) ([]model.
 // 统计
 // ============================================================
 
+// VerifySkillToken 校验技能安装 Token (用于网关调用鉴权)
+func (s *SkillService) VerifySkillToken(skillKey, userID, token string) bool {
+	var cnt int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM skill_installations si
+		JOIN skills sk ON si.skill_id = sk.id
+		WHERE sk.skill_key = $1 AND si.user_id = $2 AND si.status = 'active' AND si.api_key_hash = $3
+	`, skillKey, userID, hashToken(token)).Scan(&cnt)
+	return err == nil && cnt > 0
+}
+
+// BumpCallCount 技能调用计数 +1
+func (s *SkillService) BumpCallCount(skillKey string) error {
+	_, err := s.db.Exec(`UPDATE skills SET call_count = call_count + 1 WHERE skill_key = $1`, skillKey)
+	return err
+}
+
 // GetOverviewStats 获取概览统计
 func (s *SkillService) GetOverviewStats() (map[string]interface{}, error) {
 	var totalSkills, totalInstalls, monthlyCalls, monthlyActiveUsers int64

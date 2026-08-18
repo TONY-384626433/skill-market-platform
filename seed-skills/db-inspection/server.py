@@ -295,7 +295,7 @@ def handle_inspect(args: dict, req_id) -> dict:
         for issue in sorted(issues, key=lambda x: {"critical": 0, "warning": 1, "info": 2}[x["severity"]]):
             emoji = "🔴" if issue["severity"] == "critical" else "🟡" if issue["severity"] == "warning" else "ℹ️"
             report += f"- {emoji} **{issue['component']}**: {issue['detail']}\n"
-            report += f"  💡 {issue['suggestion']}\n\n"
+            report += f"  💡 {issue.get('suggestion', '')}\n\n"
 
     if not issues:
         report += "\n### ✅ 所有指标正常, 数据库运行健康!\n"

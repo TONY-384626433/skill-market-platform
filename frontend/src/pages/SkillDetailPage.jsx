@@ -11,9 +11,10 @@ import {
   DownloadOutlined, StarFilled, ClockCircleOutlined,
   CheckCircleOutlined, CopyOutlined, CodeOutlined,
   BookOutlined, ApiOutlined, SafetyCertificateOutlined,
-  ThunderboltOutlined, RocketOutlined, ShareAltOutlined
+  ThunderboltOutlined, RocketOutlined, ShareAltOutlined,
+  PlayCircleOutlined, BugOutlined
 } from '@ant-design/icons';
-import { getSkillDetail, installSkill, rateSkill, getSkillRatings } from '../services/api';
+import { getSkillDetail, installSkill, rateSkill, getSkillRatings, invokeSkill } from '../services/api';
 import { UserContext } from '../App';
 import ReactMarkdown from 'react-markdown';
 
@@ -28,6 +29,26 @@ const categoryGradient = {
   '风控分析': 'linear-gradient(135deg, #f43f5e, #f59e0b)',
 };
 
+// 在线试玩默认参数模板
+const PLAYGROUND_TEMPLATES = {
+  'db-inspection': {
+    params: { target_db: 'core-banking-db-01', check_scope: 'full' },
+    hint: '支持实例: core-banking-db-01 / payment-db-02 / risk-control-db-01',
+  },
+  'log-desensitization': {
+    params: { log_content: '用户张三的身份证号是110101199003078888, 手机号13800138000' },
+    hint: '演示: 身份证号 / 手机号 / 银行卡号自动检测并脱敏',
+  },
+  'alert-convergence': {
+    params: { host: 'payment-node-01', time_range_minutes: 60 },
+    hint: '演示: 对 payment-node-01 最近 1 小时告警做收敛分析',
+  },
+  'requirement-analysis': {
+    params: { title: '余额查询', description: '实现余额查询功能, 支持实时余额与昨日余额对比' },
+    hint: '演示: AI 需求分析, 输出结构化分析结果',
+  },
+};
+
 export default function SkillDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -39,11 +60,23 @@ export default function SkillDetailPage() {
   const [tokenModal, setTokenModal] = useState({ open: false, token: '' });
   const [ratings, setRatings] = useState([]);
   const [userRating, setUserRating] = useState(0);
+  const [playParams, setPlayParams] = useState('');
+  const [playResult, setPlayResult] = useState(null);
+  const [playLoading, setPlayLoading] = useState(false);
 
   useEffect(() => {
     fetchSkill();
     fetchRatings();
   }, [id]);
+
+  // 加载试玩默认参数
+  useEffect(() => {
+    if (skill?.skill_key) {
+      const tpl = PLAYGROUND_TEMPLATES[skill.skill_key];
+      setPlayParams(JSON.stringify(tpl?.params || { text: '请输入参数' }, null, 2));
+      setPlayResult(null);
+    }
+  }, [skill?.skill_key]);
 
   const fetchSkill = async () => {
     setLoading(true);
@@ -96,6 +129,31 @@ export default function SkillDetailPage() {
   const copyToken = () => {
     navigator.clipboard.writeText(tokenModal.token);
     message.success('Token 已复制到剪贴板');
+  };
+
+  // 在线试玩: 真实调用技能
+  const handlePlay = async () => {
+    if (!user) {
+      message.warning('请先登录后试玩');
+      return navigate('/login');
+    }
+    let params;
+    try {
+      params = JSON.parse(playParams || '{}');
+    } catch (e) {
+      return message.error('参数不是合法 JSON, 请检查格式');
+    }
+    setPlayLoading(true);
+    setPlayResult(null);
+    try {
+      const res = await invokeSkill(skill.skill_key, 'execute', params);
+      setPlayResult(res);
+      message.success(`调用成功! 耗时 ${res.duration_ms}ms`);
+    } catch (e) {
+      message.error(e.response?.data?.error || '调用失败');
+      setPlayResult({ status: 'failed', error: e.response?.data?.error || '调用失败', duration_ms: 0 });
+    }
+    setPlayLoading(false);
   };
 
   if (loading) {
@@ -286,6 +344,76 @@ print(result)`}</pre>
                       </List.Item>
                     )}
                   />
+                </div>
+              ),
+            },
+            {
+              key: 'playground',
+              label: <span><PlayCircleOutlined /> 在线试玩</span>,
+              children: (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                    <span className="nexus-tag nexus-tag-green" style={{ fontSize: 12 }}>● LIVE</span>
+                    <Text style={{ color: 'var(--text-dim)', fontSize: 12.5 }}>
+                      真实调用技能服务 · 参数将发送至 MCP Server 执行
+                    </Text>
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <Text style={{ color: 'var(--cyan-bright)', fontWeight: 600, fontSize: 13, display: 'block', marginBottom: 8 }}>
+                      ▸ 调用参数 (JSON)
+                    </Text>
+                    <Input.TextArea
+                      className="nexus-input"
+                      value={playParams}
+                      onChange={(e) => setPlayParams(e.target.value)}
+                      rows={5}
+                      style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, borderRadius: 10 }}
+                    />
+                    <Text style={{ color: 'var(--text-dim)', fontSize: 11.5, display: 'block', marginTop: 6 }}>
+                      {PLAYGROUND_TEMPLATES[skill.skill_key]?.hint || ''}
+                    </Text>
+                  </div>
+                  <Button
+                    className="glow-btn glow-btn-violet"
+                    icon={<BugOutlined />}
+                    loading={playLoading}
+                    onClick={handlePlay}
+                    style={{ height: 42, padding: '0 30px', marginBottom: 20 }}
+                  >
+                    {playLoading ? '技能执行中...' : '▶ 执行技能'}
+                  </Button>
+
+                  {playResult && (
+                    <div style={{ borderRadius: 14, border: playResult.status === 'success' ? '1px solid rgba(52,211,153,0.25)' : '1px solid rgba(244,63,94,0.3)', background: 'rgba(8,13,30,0.7)', padding: '18px 22px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+                        <span className={`nexus-tag ${playResult.status === 'success' ? 'nexus-tag-green' : 'nexus-tag-pink'}`}>
+                          {playResult.status === 'success' ? '● SUCCESS' : '● FAILED'}
+                        </span>
+                        {playResult.duration_ms > 0 && (
+                          <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                            <ClockCircleOutlined /> 耗时 {playResult.duration_ms}ms
+                          </Text>
+                        )}
+                        {playResult.trace_id && (
+                          <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                            trace: {playResult.trace_id}
+                          </Text>
+                        )}
+                        {playResult.data?.tool && (
+                          <Text style={{ color: 'var(--text-dim)', fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                            tool: {playResult.data.tool}
+                          </Text>
+                        )}
+                      </div>
+                      {playResult.status === 'success' ? (
+                        <div style={{ fontSize: 13.5, lineHeight: 1.8, color: 'var(--text-secondary)' }}>
+                          <ReactMarkdown>{playResult.data?.result || ''}</ReactMarkdown>
+                        </div>
+                      ) : (
+                        <Text style={{ color: '#f87171', fontSize: 13 }}>{playResult.error}</Text>
+                      )}
+                    </div>
+                  )}
                 </div>
               ),
             },

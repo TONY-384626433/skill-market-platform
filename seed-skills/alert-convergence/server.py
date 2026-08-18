@@ -207,7 +207,7 @@ def handle_request(request: dict) -> dict:
                 text += f"#### {rc['root_cause']} (置信度: {rc['confidence']:.0%})\n"
                 text += f"- 影响主机: {', '.join(rc['affected_hosts'])}\n"
                 text += f"- 证据: {rc['evidence']}\n"
-                text += f"- 建议: {rc['suggestion']}\n\n"
+                text += f"- 建议: {rc.get('suggestion', '')}\n\n"
 
             return {
                 "jsonrpc": "2.0", "id": req_id,
@@ -222,7 +222,7 @@ def handle_request(request: dict) -> dict:
             text = f"## 🔍 根因分析结果\n\n"
             for rc in result["root_causes"]:
                 text += f"### {rc['root_cause']}\n"
-                text += f"**置信度**: {rc['confidence']:.0%} | **建议**: {rc['suggestion']}\n\n"
+                text += f"**置信度**: {rc['confidence']:.0%} | **建议**: {rc.get('suggestion', '')}\n\n"
 
             return {
                 "jsonrpc": "2.0", "id": req_id,
@@ -248,7 +248,7 @@ def handle_request(request: dict) -> dict:
 
             text += f"\n### 根因分析 ({len(result['root_causes'])} 个)\n"
             for rc in result["root_causes"]:
-                text += f"- **{rc['root_cause']}** → {rc['suggestion']}\n"
+                text += f"- **{rc['root_cause']}** → {rc.get('suggestion', '')}\n"
 
             return {
                 "jsonrpc": "2.0", "id": req_id,
