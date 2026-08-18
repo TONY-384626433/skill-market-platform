@@ -2,8 +2,8 @@
 // Skill Nexus — 主应用入口（科技感重构版）
 // ============================================================
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { ConfigProvider, theme, Layout, Button, Avatar, Dropdown, Space, App as AntApp } from 'antd';
+import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { ConfigProvider, theme, Layout, Button, Avatar, Dropdown, Space, App as AntApp, Alert } from 'antd';
 import { UserOutlined, LogoutOutlined, LoginOutlined, ThunderboltFilled } from '@ant-design/icons';
 import { Navigate } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
 import MyInstallationsPage from './pages/MyInstallationsPage';
 import ParticleBackground from './components/ParticleBackground';
+import { checkHealth } from './services/api';
 
 const { Header, Content, Footer } = Layout;
 
@@ -43,6 +44,7 @@ function NavItem({ item, active, onClick }) {
 
 function App() {
   const [user, setUser] = useState(null);
+  const [apiOnline, setApiOnline] = useState(true);
   const location = useLocation();
 
   useEffect(() => {
@@ -51,6 +53,13 @@ function App() {
       try { setUser(JSON.parse(saved)); } catch (e) {}
     }
   }, []);
+
+  // 检测后端 API 是否可达 (静态托管时无后端)
+  useEffect(() => {
+    checkHealth()
+      .then(() => setApiOnline(true))
+      .catch(() => setApiOnline(false));
+  }, [location.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('skillhub_token');
@@ -145,6 +154,15 @@ function App() {
 
             {/* ========== 内容区 ========== */}
             <Content className="nexus-content">
+              {!apiOnline && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="当前为静态预览模式: 后端 API 未连接, 技能数据与调用功能需本地运行完整环境"
+                  description="本地运行: cd docker && docker compose up -d --build → cd backend && go run cmd/main.go → cd frontend && npm start"
+                  style={{ marginBottom: 16, borderRadius: 10, background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)' }}
+                />
+              )}
               <Routes>
                 <Route path="/" element={<MarketPage />} />
                 <Route path="/skills/:id" element={<SkillDetailPage />} />
@@ -169,12 +187,12 @@ function App() {
   );
 }
 
-// 包一层 BrowserRouter（App 内部用 useLocation）
+// 包一层 HashRouter（GitHub Pages 等静态托管兼容, 刷新/子路由不 404）
 function AppWithRouter() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <App />
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

@@ -106,4 +106,10 @@ export const getAuditLogs = (params) =>
 export const invokeSkill = (skillKey, method, params) =>
   api.post('/gateway/invoke', { skill_key: skillKey, method, params });
 
+// ============================================================
+// 系统
+// ============================================================
+export const checkHealth = () =>
+  api.get('/health');
+
 export default api;
