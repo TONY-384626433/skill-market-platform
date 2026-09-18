@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
-  Alert, App as AntApp, Button, Descriptions, Empty, Input, List, Modal, Rate, Skeleton, Space, Tabs, Tag,
+  Alert, App as AntApp, Button, Descriptions, Empty, Input, List, Modal, Rate, Skeleton, Space, Tabs, Tag, Tooltip,
 } from 'antd';
 import {
   ArrowLeftOutlined, CheckCircleOutlined, ClockCircleOutlined, CodeOutlined, CopyOutlined,
@@ -10,7 +10,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { UserContext } from '../App';
 import SkillVisual from '../components/SkillVisual';
-import { getSkillDetail, getSkillRatings, installSkill, invokeSkill, rateSkill } from '../services/api';
+import { getSkillDetail, getSkillAuditBadge, getSkillRatings, installSkill, invokeSkill, rateSkill } from '../services/api';
 import { formatDate, formatNumber, safeJson } from '../utils/format';
 
 const playTemplates = {
@@ -42,15 +42,21 @@ export default function SkillDetailPage() {
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
+  const [auditBadge, setAuditBadge] = useState(null);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const [skillResponse, ratingResponse] = await Promise.all([getSkillDetail(id), getSkillRatings(id, { page: 1, page_size: 20 })]);
+      const [skillResponse, ratingResponse, badgeResponse] = await Promise.all([
+        getSkillDetail(id),
+        getSkillRatings(id, { page: 1, page_size: 20 }),
+        getSkillAuditBadge(id).catch(() => null),
+      ]);
       if (!skillResponse?.data) throw new Error('技能详情数据格式异常');
       setSkill(skillResponse.data);
       setRatings(Array.isArray(ratingResponse?.data) ? ratingResponse.data : []);
+      setAuditBadge(badgeResponse?.data || null);
       setPlayParams(JSON.stringify(playTemplates[skillResponse.data.skill_key] || { input: '请输入测试参数' }, null, 2));
       try {
         const recent = JSON.parse(localStorage.getItem('skillhub_recent_skills')) || [];
@@ -188,7 +194,7 @@ export default function SkillDetailPage() {
       <Button className="back-button" type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}>返回技能市场</Button>
       <section className="detail-header">
         <SkillVisual category={skill.category} size="lg" />
-        <div className="detail-title"><div className="detail-badges"><Tag color="blue">{skill.category}</Tag><Tag>{skill.skill_type?.toUpperCase()}</Tag><Tag color={skill.stability === 'stable' ? 'success' : 'warning'}>{skill.stability === 'stable' ? '稳定版本' : '测试版本'}</Tag></div><h1>{skill.name}</h1><p>{skill.summary}</p><div className="detail-inline-meta"><span><StarFilled className="rating-star" /> {Number(skill.rating_avg || 0).toFixed(1)} ({skill.rating_count || 0})</span><span><DownloadOutlined /> {formatNumber(skill.install_count)} 次安装</span><span><TeamOutlined /> {skill.team_name || skill.author_name}</span><span>v{skill.version}</span></div></div>
+        <div className="detail-title"><div className="detail-badges"><Tag color="blue">{skill.category}</Tag><Tag>{skill.skill_type?.toUpperCase()}</Tag><Tag color={skill.stability === 'stable' ? 'success' : 'warning'}>{skill.stability === 'stable' ? '稳定版本' : '测试版本'}</Tag>{auditBadge && <Tooltip title={auditBadge.verified ? `可用性审核通过 · ${auditBadge.last_audit?.summary || ''}` : `可用性审核未通过 · ${auditBadge.last_audit?.summary || '尚未运行检测'}`}><Tag color={auditBadge.verified ? 'success' : 'error'} icon={<SafetyCertificateOutlined />}>{auditBadge.verified ? `可用性已审 · ${Math.round(auditBadge.audit_score ?? 0)} 分` : '可用性未过审'}</Tag></Tooltip>}</div><h1>{skill.name}</h1><p>{skill.summary}</p><div className="detail-inline-meta"><span><StarFilled className="rating-star" /> {Number(skill.rating_avg || 0).toFixed(1)} ({skill.rating_count || 0})</span><span><DownloadOutlined /> {formatNumber(skill.install_count)} 次安装</span><span><TeamOutlined /> {skill.team_name || skill.author_name}</span><span>v{skill.version}</span></div></div>
         <div className="detail-header-actions"><Button icon={<PlayCircleOutlined />} onClick={() => changeTab('playground')}>在线试玩</Button><Button type="primary" icon={<DownloadOutlined />} loading={installing} onClick={handleInstall}>安装技能</Button></div>
         <Button className="detail-install-mobile" type="primary" icon={<DownloadOutlined />} loading={installing} onClick={handleInstall}>安装</Button>
       </section>

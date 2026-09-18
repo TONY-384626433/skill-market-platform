@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getGitHubSkillDownloadURL, getGitHubSkillPreview, searchGitHubSkills } from '../services/api';
+import { getGitHubSkillDownloadURL, getGitHubSkillPreview, searchGitHubSkills, submitImportRequest } from '../services/api';
 import { formatNumber } from '../utils/format';
 
 const compatibilityMeta = {
@@ -63,6 +63,36 @@ function GitHubSkillPreview({ skill, open, onClose }) {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('rendered');
   const [copied, setCopied] = useState(false);
+  const [review, setReview] = useState(null);     // 安全审查单 (先审核, 后下载)
+  const [reviewing, setReviewing] = useState(false);
+  const [gateError, setGateError] = useState('');
+
+  const submitReview = async () => {
+    if (!skill) return;
+    setReviewing(true);
+    setGateError('');
+    try {
+      const response = await submitImportRequest(skill.repository, skill.ref, skill.path, skill.skill_url);
+      setReview(response?.data || response);
+    } catch (requestError) {
+      setGateError(requestError.response?.data?.error || requestError.message || '提交安全审查失败');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  const reviewMeta = {
+    pending: { color: 'default', text: '待审查' },
+    scanning: { color: 'processing', text: '审查中' },
+    pending_review: { color: 'warning', text: '待人工复核' },
+    approved: { color: 'success', text: '已通过安全审查' },
+    blocked: { color: 'error', text: '安全审查已阻断' },
+    rejected: { color: 'default', text: '已驳回' },
+    imported: { color: 'cyan', text: '已入库' },
+  }[review?.status] || { color: 'default', text: '未审查' };
+  const downloadURL = review?.download_allowed
+    ? `${getGitHubSkillDownloadURL(skill)}&request_id=${encodeURIComponent(review.id)}`
+    : undefined;
 
   useEffect(() => {
     if (!open || !skill) return undefined;
@@ -72,6 +102,8 @@ function GitHubSkillPreview({ skill, open, onClose }) {
     setLoading(true);
     setActiveTab('rendered');
     setCopied(false);
+    setReview(null);
+    setGateError('');
     getGitHubSkillPreview(skill)
       .then((response) => { if (active) setPreview(response); })
       .catch((requestError) => { if (active) setError(requestError.response?.data?.error || requestError.message || '预览内容加载失败'); })
@@ -110,7 +142,7 @@ function GitHubSkillPreview({ skill, open, onClose }) {
       destroyOnHidden
       title={<span className="github-preview-title"><GithubOutlined /><span><strong>Skill 项目预览</strong><small>{skill.repository}</small></span></span>}
       extra={<Button type="text" icon={<LinkOutlined />} href={skill.skill_url || skill.repository_url} target="_blank" rel="noreferrer">GitHub</Button>}
-      footer={<div className="github-preview-footer"><span><SafetyCertificateOutlined /> 请先审阅来源、权限与脚本内容</span><div><Button onClick={onClose}>暂不下载</Button><Button type="primary" icon={<CloudDownloadOutlined />} href={preview ? getGitHubSkillDownloadURL(skill) : undefined} disabled={!preview || !skill.download_enabled}>确认并下载 Skill</Button></div></div>}
+      footer={<div className="github-preview-footer"><span><SafetyCertificateOutlined /> 安全门禁: 外部技能需先审查 (查毒/危险行为/提示注入) 才能下载</span><div className="github-preview-actions"><Button onClick={onClose}>关闭</Button>{review?.download_allowed ? <Button type="primary" icon={<CloudDownloadOutlined />} href={downloadURL}>下载已审通过包</Button> : <Button type="primary" icon={<SafetyCertificateOutlined />} loading={reviewing} disabled={!skill.download_enabled} onClick={submitReview}>{review ? '重新提交审查' : '提交安全审查'}</Button>}</div></div>}
     >
       <div className="github-preview-shell">
         <header className="github-preview-hero">
@@ -118,6 +150,25 @@ function GitHubSkillPreview({ skill, open, onClose }) {
           <div><div className="github-preview-tags"><Tag>{skill.format}</Tag><Tag>{skill.category}</Tag>{skill.license && <Tag>{skill.license}</Tag>}</div><h2>{preview?.name || skill.name}</h2><p>{preview?.description || skill.description}</p></div>
           <span className={`compatibility-badge ${compatibility.tone}`}><CompatibilityIcon />{skill.compatibility?.label}</span>
         </header>
+
+        {(review || gateError) && (
+          <div className={`github-review-panel ${review?.status === 'blocked' ? 'blocked' : review?.download_allowed ? 'passed' : 'pending'}`}>
+            <div className="github-review-head">
+              <Tag color={reviewMeta.color}>{reviewMeta.text}</Tag>
+              {review?.verdict_cn && <Tag>{review.verdict_cn}</Tag>}
+              {typeof review?.risk_score === 'number' && <span className="sec-muted">风险分 {review.risk_score}</span>}
+              {review?.grade && <span className="sec-muted">等级 {review.grade}</span>}
+              {review?.id && <code>{review.id}</code>}
+            </div>
+            {gateError && <p>{gateError}</p>}
+            {review?.review_note && <p>{review.review_note}</p>}
+            {review?.reupload?.suspected && <p>查重提示: 与「{review.reupload.matched_skill_name}」相似度 {(review.reupload.similarity * 100).toFixed(0)}%, 需人工确认原创性后放行。</p>}
+            {(review?.findings || []).slice(0, 4).map((finding, index) => (
+              <div key={index} className="github-review-finding"><b>{finding.rule_id}</b><span>{finding.title}</span>{finding.file && <code>{finding.file}</code>}</div>
+            ))}
+            {(review?.findings || []).length > 4 && <p className="sec-muted">另有 {review.findings.length - 4} 项风险, 详见安全治理页报告</p>}
+          </div>
+        )}
 
         <Alert className="github-preview-notice" type="warning" showIcon message={preview?.security_notice || '第三方公开内容正在以只读方式预览，不会执行仓库中的代码。'} />
 

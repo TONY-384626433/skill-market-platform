@@ -219,7 +219,6 @@ func (h *GatewayHandler) realInvoke(ctx context.Context, skillKey, method string
 
 // findPython 查找可用的 Python 运行时 (已废弃: 改为 HTTP 转发 skill-runner)
 
-
 func (h *GatewayHandler) recordAudit(traceID, skillKey, userID, status string, durationMs int, sourceIP string, pii bool) {
 	_ = h.svc.RecordAudit(&model.AuditLog{
 		TraceID:        traceID,

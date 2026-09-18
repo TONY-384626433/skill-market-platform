@@ -59,8 +59,47 @@ export const getReviewQueue = () => api.get('/admin/review-queue');
 export const reviewSkill = (id, data) => api.post(`/admin/skills/${id}/review`, data);
 export const getAuditLogs = (params) => api.get('/admin/audit-logs', { params });
 
+// ---------- 技能可用性审核 ----------
+export const getAuditOverview = () => api.get('/admin/audit-overview');export const getAuditQueue = (params) => api.get('/admin/audit-queue', { params });
+export const getRecentAudits = (params) => api.get('/admin/audits/recent', { params });
+export const getAuditDetail = (auditId) => api.get(`/admin/audits/${auditId}`);
+export const getSkillAudits = (id, params) => api.get(`/admin/skills/${id}/audits`, { params });
+export const runSkillAudit = (id) => api.post(`/admin/skills/${id}/audit`, {}, { timeout: 120000 });
+export const selfCheckSkill = (id) => api.post(`/skills/${id}/self-check`, {}, { timeout: 120000 });
+export const getSkillAuditBadge = (id) => api.get(`/skills/${id}/audit-badge`);
+
 export const invokeSkill = (skillKey, method, params) =>
   api.post('/gateway/invoke', { skill_key: skillKey, method, params });
 export const checkHealth = () => api.get('/health');
+
+// ---------- AI 智能体 ----------
+export const getAgentStatus = () => api.get('/agent/status');
+export const getAgentTools = () => api.get('/agent/tools');
+export const sendAgentMessage = (text, history) => api.post('/agent/chat', { message: text, history }, { timeout: 190000 });
+
+// ---------- 技能安全治理 (查毒 / 防盗用溯源 / 导入门禁) ----------
+export const getSecurityRules = () => api.get('/security/rules');
+export const getSecurityOverview = () => api.get('/admin/security-overview');
+export const getSecurityQueue = (params) => api.get('/admin/security-queue', { params });
+export const getSecurityScans = (params) => api.get('/admin/security-scans', { params });
+export const getSecurityScanDetail = (scanId) => api.get(`/admin/security-scans/${scanId}`);
+export const runSkillSecurityScan = (id) => api.post(`/admin/skills/${id}/security-scan`, {}, { timeout: 180000 });
+export const getSkillSecurityScans = (id, params) => api.get(`/admin/skills/${id}/security-scans`, { params });
+export const getSkillProvenance = (id) => api.get(`/admin/skills/${id}/provenance`);
+export const verifySkillProvenance = (id) => api.post(`/admin/skills/${id}/provenance/verify`, {});
+export const getDownloadAudits = (params) => api.get('/admin/download-audits', { params });
+export const getImportRequests = (params) => api.get('/admin/import-requests', { params });
+export const scanImportRequest = (reqId) => api.post(`/admin/import-requests/${reqId}/scan`, {}, { timeout: 180000 });
+export const decideImportRequest = (reqId, approve, note) => api.post(`/admin/import-requests/${reqId}/decision`, { approve, note });
+export const getSkillSecurityBadge = (id) => api.get(`/skills/${id}/security-badge`);
+export const submitImportRequest = (repo, ref, path, skillUrl) =>
+  api.post('/github/import-requests', { repository: repo, ref, path, skill_url: skillUrl }, { timeout: 180000 });
+export const getImportRequest = (reqId) => api.get(`/github/import-requests/${reqId}`);
+export const getSecurityRulesExportURL = () => `${(import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '')}/admin/security-rules/export`;
+export const scanPackage = (file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return api.post('/admin/security/scan-package', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 180000 });
+};
 
 export default api;

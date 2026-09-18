@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -13,8 +14,11 @@ import (
 	_ "github.com/lib/pq"
 
 	"github.com/jjbank/skill-market/internal/config"
+	dbpkg "github.com/jjbank/skill-market/internal/db"
 	"github.com/jjbank/skill-market/internal/handler"
 	"github.com/jjbank/skill-market/internal/middleware"
+	"github.com/jjbank/skill-market/internal/model"
+	secengine "github.com/jjbank/skill-market/internal/security"
 	"github.com/jjbank/skill-market/internal/service"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -61,10 +65,51 @@ func main() {
 
 	// 初始化服务
 	skillSvc := service.NewSkillService(db, cfg)
+	auditSvc := service.NewAuditService(db, cfg)
+	agentSvc := service.NewAgentService(db, cfg, skillSvc)
 	skillHandler := handler.NewSkillHandler(skillSvc)
+	auditHandler := handler.NewAuditHandler(auditSvc, skillSvc)
+	agentHandler := handler.NewAgentHandler(agentSvc)
 	gatewayHandler := handler.NewGatewayHandler(skillSvc, cfg)
 	githubService := service.NewGitHubService(cfg.GitHub)
 	githubHandler := handler.NewGitHubHandler(githubService)
+
+	// 装载技能安全规则库 (签名库外置; 未装载则拒绝启动, 保证 fail-closed)
+	if err := secengine.LoadRules(secengine.ResolveRulesPath()); err != nil {
+		log.Fatalf("技能安全规则库装载失败, 为保证安全拒绝启动: %v", err)
+	}
+	// 密钥材料自检: 生产环境不允许使用内置演示密钥 (对接 KMS 挂载)
+	if err := secengine.ValidateKeyMaterial(); err != nil {
+		log.Fatalf("签名密钥自检未通过: %v", err)
+	}
+	securityService := service.NewSecurityService(db)
+	securityHandler := handler.NewSecurityHandler(securityService, githubService)
+	githubHandler.AttachSecurity(securityService)
+	log.Printf("[security] 规则库已装载: %v", secengine.RulesMeta())
+	log.Printf("[security] 病毒库状态: %s", secengine.AVSummary(secengine.ExternalAVStatus()))
+
+	// 预热 GitHub 公开技能索引: 后台提前拉取一次默认目录, 避免用户首次打开页面长时间等待
+	go func() {
+		warmCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		if _, err := githubService.Search(warmCtx, &model.GitHubSkillSearchRequest{Query: "", Page: 1, PageSize: 12}); err != nil {
+			log.Printf("[warmup] GitHub 技能索引预热失败 (不影响启动): %v", err)
+			return
+		}
+		log.Printf("[warmup] GitHub 公开技能索引已预热, 首次访问将直接命中缓存")
+	}()
+
+	// 技能可用性审核表结构 (幂等补齐, 旧库无需手工迁移)
+	if n := dbpkg.EnsureAuditSchema(db); n > 0 {
+		log.Printf("✅ 审核表结构就绪 (%d 条 DDL)", n)
+	} else {
+		log.Printf("⚠ 审核表结构初始化未完成, 请检查数据库权限")
+	}
+
+	// 技能安全治理表结构 (扫描记录/溯源档案/导入审查单/下载审计, 幂等补齐)
+	if n := dbpkg.EnsureSecuritySchema(db); n > 0 {
+		log.Printf("[security] 安全治理表已就绪 (%d 条 DDL)", n)
+	}
 
 	// 设置 Gin
 	r := gin.Default()
@@ -376,11 +421,17 @@ func main() {
 	r.GET("/api/v1/skills/categories", skillHandler.GetCategories)
 	r.GET("/api/v1/skills/:id", skillHandler.GetSkill)
 	r.GET("/api/v1/skills/:id/ratings", skillHandler.GetSkillRatings)
+	r.GET("/api/v1/skills/:id/audit-badge", auditHandler.GetAuditBadge)
 	r.GET("/api/v1/skills/stats/overview", skillHandler.GetStats)
 	r.GET("/api/v1/github/status", githubHandler.Status)
 	r.GET("/api/v1/github/skills/search", githubHandler.SearchSkills)
 	r.GET("/api/v1/github/skills/preview", githubHandler.PreviewSkill)
 	r.GET("/api/v1/github/skills/download", githubHandler.DownloadSkill)
+
+	// 安全治理: 规则库 / 安全徽章 (公开, 可审计)
+	r.GET("/api/v1/security/rules", securityHandler.SecurityRules)
+	r.GET("/api/v1/security/engine", securityHandler.SecurityRules)
+	r.GET("/api/v1/skills/:id/security-badge", securityHandler.SkillSecurityBadge)
 
 	// ============================================================
 	// 需认证路由
@@ -399,6 +450,18 @@ func main() {
 		// 技能调用网关
 		auth.POST("/gateway/invoke", gatewayHandler.InvokeSkill)
 
+		// 技能可用性审核: 开发者/管理员自检
+		auth.POST("/skills/:id/self-check", auditHandler.SelfCheck)
+
+		// AI 智能体 (自然语言编排技能)
+		auth.GET("/agent/status", agentHandler.Status)
+		auth.GET("/agent/tools", agentHandler.ListTools)
+		auth.POST("/agent/chat", agentHandler.Chat)
+
+		// GitHub 技能导入门禁: 提交安全审查 (先审核, 后下载) / 查询审查单
+		auth.POST("/github/import-requests", securityHandler.SubmitImportRequest)
+		auth.GET("/github/import-requests/:reqId", securityHandler.GetImportRequest)
+
 		developer := auth.Group("")
 		developer.Use(middleware.RequireRole("developer", "admin"))
 		{
@@ -412,6 +475,31 @@ func main() {
 			admin.GET("/review-queue", skillHandler.GetReviewQueue)
 			admin.POST("/skills/:id/review", skillHandler.ReviewSkill)
 			admin.GET("/audit-logs", skillHandler.GetAuditLogs)
+
+			// 技能可用性审核
+			admin.GET("/audit-overview", auditHandler.GetAuditOverview)
+			admin.GET("/audit-queue", auditHandler.GetAuditQueue)
+			admin.GET("/audits/recent", auditHandler.GetRecentAudits)
+			admin.GET("/audits/:auditId", auditHandler.GetAuditDetail)
+			admin.GET("/skills/:id/audits", auditHandler.GetSkillAudits)
+			admin.POST("/skills/:id/audit", auditHandler.RunSkillAudit)
+
+			// 技能安全治理 (查毒 / 防盗用溯源 / 导入门禁)
+			admin.GET("/security-overview", securityHandler.Overview)
+			admin.GET("/security-queue", securityHandler.Queue)
+			admin.GET("/security-scans", securityHandler.RecentScans)
+			admin.GET("/security-scans/:scanId", securityHandler.ScanDetail)
+			admin.POST("/skills/:id/security-scan", securityHandler.RunSkillScan)
+			admin.GET("/skills/:id/security-scans", securityHandler.SkillScans)
+			admin.GET("/skills/:id/provenance", securityHandler.Provenance)
+			admin.POST("/skills/:id/provenance/verify", securityHandler.VerifyProvenance)
+			admin.GET("/download-audits", securityHandler.DownloadAudits)
+			admin.GET("/import-requests", securityHandler.ImportRequests)
+			admin.GET("/import-requests/:reqId", securityHandler.GetImportRequest)
+			admin.POST("/import-requests/:reqId/scan", securityHandler.RunImportScan)
+			admin.POST("/import-requests/:reqId/decision", securityHandler.DecideImport)
+			admin.GET("/security-rules/export", securityHandler.ExportRules)
+			admin.POST("/security/scan-package", securityHandler.ScanPackage)
 		}
 	}
 

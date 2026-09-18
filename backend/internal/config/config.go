@@ -90,7 +90,7 @@ func Load() *Config {
 		GitHub: GitHubConfig{
 			Token:    getEnv("GITHUB_TOKEN", ""),
 			APIBase:  getEnv("GITHUB_API_URL", "https://api.github.com"),
-			CacheTTL: 5 * time.Minute,
+			CacheTTL: getEnvDuration("GITHUB_CACHE_TTL", 30*time.Minute),
 		},
 	}
 }
@@ -98,6 +98,15 @@ func Load() *Config {
 func getEnv(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return defaultVal
+}
+
+func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
 	}
 	return defaultVal
 }

@@ -1278,3 +1278,204 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
   .github-preview-footer > div { display: grid; grid-template-columns: .8fr 1.2fr; }
   .github-preview-footer .ant-btn { min-width: 0; padding-inline: 8px; font-size: 9px; }
 }
+
+/* ============================================================
+   技能审核 (可用性审核中心)
+   ============================================================ */
+.governance-metrics.audit-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+.audit-inline-score { font-weight: 700; font-size: 12px; }
+.audit-inline-score.success { color: var(--teal); }
+.audit-inline-score.warning { color: var(--amber); }
+.audit-inline-score.danger { color: var(--danger); }
+
+.audit-catalog { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 18px 20px 22px; }
+.audit-catalog-item { padding: 14px 16px; border: 1px solid var(--border); border-left: 3px solid var(--primary); border-radius: 6px; background: var(--surface-soft); }
+.audit-catalog-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 7px; }
+.audit-catalog-head strong { color: var(--text); font-size: 13px; }
+.audit-catalog-item p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.75; }
+
+.drawer-title { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+
+.audit-report { display: grid; gap: 18px; }
+.audit-report-head { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 20px; align-items: center; padding: 18px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-soft); }
+.audit-score-value { display: inline-flex; align-items: baseline; gap: 2px; font-size: 26px; font-weight: 700; }
+.audit-score-value small { font-size: 11px; font-weight: 500; color: var(--muted); }
+.audit-report-title { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.audit-report-title strong { font-size: 16px; }
+.audit-report-summary > p { margin: 8px 0 12px; color: var(--muted); font-size: 12px; line-height: 1.75; }
+.audit-report-summary .ant-descriptions-item-label { font-size: 11px; }
+.audit-report-summary .ant-descriptions-item-content { font-size: 12px; }
+
+.audit-checks { display: grid; gap: 10px; }
+.audit-check { padding: 13px 15px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: 6px; background: var(--surface); }
+.audit-check.passed { border-left-color: var(--teal); }
+.audit-check.failed { border-left-color: var(--danger); background: var(--danger-soft); }
+.audit-check.warning { border-left-color: #c78325; background: var(--amber-soft); }
+.audit-check-head { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.audit-check-code { padding: 1px 7px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; font-size: 10px; }
+.audit-check-head strong { font-size: 12.5px; }
+.audit-check-meta { color: var(--subtle); font-size: 10px; }
+.audit-check-score { margin-left: auto; font-size: 12px; font-weight: 700; }
+.audit-check-score.success { color: var(--teal); }
+.audit-check-score.warning { color: var(--amber); }
+.audit-check-score.danger { color: var(--danger); }
+.audit-check-detail { margin: 8px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.7; }
+.audit-check-evidence { margin: 9px 0 0; padding: 9px 11px; max-height: 180px; overflow: auto; border-radius: 5px; background: #10202f; color: #cfe3f2; font-family: ui-monospace, Consolas, monospace; font-size: 10.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+
+@media (max-width: 1180px) {
+  .governance-metrics.audit-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .audit-catalog { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 720px) {
+  .governance-metrics.audit-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .audit-report-head { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+  .audit-report-title { justify-content: center; }
+}
+
+/* ============================================================
+   AI 智能体 (Agent)
+   ============================================================ */
+.agent-metrics { display: grid; grid-template-columns: 1.6fr repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.agent-mode { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 6px; background: var(--surface); }
+.agent-mode.llm { border-left-color: var(--teal); background: linear-gradient(90deg, var(--teal-soft), var(--surface) 62%); }
+.agent-mode > .anticon { font-size: 22px; color: var(--primary); }
+.agent-mode.llm > .anticon { color: var(--teal); }
+.agent-mode strong, .agent-mode small { display: block; }
+.agent-mode strong { font-size: 13px; }
+.agent-mode small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.agent-stat { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.agent-stat > span:first-child { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: var(--primary); border-radius: 6px; background: var(--primary-soft); }
+.agent-stat strong, .agent-stat small { display: block; }
+.agent-stat strong { font-size: 17px; }
+.agent-stat small { color: var(--subtle); font-size: 9px; }
+
+.agent-layout { display: grid; grid-template-columns: minmax(0, 1fr) 306px; gap: 16px; align-items: start; }
+.agent-chat { display: flex; flex-direction: column; min-height: 560px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); overflow: hidden; }
+.agent-stream { flex: 1; min-height: 300px; max-height: 620px; overflow-y: auto; padding: 20px; display: grid; gap: 18px; align-content: start; }
+.agent-bubble { display: flex; gap: 11px; }
+.agent-avatar { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 6px; font-size: 15px; }
+.agent-bubble.assistant .agent-avatar { color: #fff; background: var(--primary); }
+.agent-bubble.user .agent-avatar { color: var(--primary); background: var(--primary-soft); }
+.agent-bubble-body { min-width: 0; flex: 1; }
+.agent-bubble.user .agent-bubble-body { padding: 9px 13px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); }
+.agent-user-text { margin: 0; font-size: 12.5px; line-height: 1.75; }
+.agent-markdown { padding: 13px 15px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); font-size: 12.5px; line-height: 1.8; }
+.agent-markdown h1, .agent-markdown h2, .agent-markdown h3 { margin: 12px 0 7px; font-size: 13.5px; }
+.agent-markdown h1:first-child, .agent-markdown h2:first-child, .agent-markdown h3:first-child { margin-top: 0; }
+.agent-markdown p { margin: 0 0 8px; }
+.agent-markdown p:last-child { margin-bottom: 0; }
+.agent-markdown table { width: 100%; margin: 8px 0; border-collapse: collapse; font-size: 11.5px; }
+.agent-markdown th, .agent-markdown td { padding: 5px 9px; border: 1px solid var(--border); text-align: left; }
+.agent-markdown th { background: var(--surface-soft); font-weight: 600; }
+.agent-markdown code { padding: 1px 5px; border-radius: 4px; background: var(--surface-soft); font-size: 11.5px; }
+.agent-markdown pre { padding: 10px 12px; overflow-x: auto; border-radius: 6px; background: #10202f; color: #cfe3f2; font-size: 11px; }
+.agent-markdown blockquote { margin: 8px 0; padding: 6px 12px; border-left: 3px solid var(--amber); background: var(--amber-soft); color: var(--muted); }
+
+.agent-steps { display: grid; gap: 8px; margin-top: 10px; }
+.agent-step { border: 1px solid var(--border); border-left: 3px solid var(--teal); border-radius: 6px; background: var(--surface-soft); }
+.agent-step.failed { border-left-color: var(--danger); }
+.agent-step.blocked { border-left-color: #c78325; background: var(--amber-soft); }
+.agent-step-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; }
+.agent-step-index { width: 19px; height: 19px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 50%; background: var(--primary); color: #fff; font-size: 10px; font-weight: 700; }
+.agent-step-head strong { font-size: 12px; }
+.agent-step-head code { padding: 1px 6px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--muted); font-size: 10.5px; }
+.agent-step-time { color: var(--subtle); font-size: 10px; }
+.agent-step-body { padding: 0 12px 11px; }
+.agent-step-label { margin: 7px 0 4px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.agent-step-body pre { margin: 0; padding: 8px 10px; max-height: 150px; overflow: auto; border-radius: 5px; background: #10202f; color: #cfe3f2; font-size: 10.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+.agent-foot { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--subtle); font-size: 10px; }
+.agent-thinking { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.agent-thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); animation: agent-blink 1.1s infinite ease-in-out; }
+.agent-thinking i:nth-child(2) { animation-delay: .18s; }
+.agent-thinking i:nth-child(3) { animation-delay: .36s; }
+@keyframes agent-blink { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+
+.agent-quick { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 20px; border-top: 1px solid var(--border); background: var(--surface-soft); }
+.agent-quick button { padding: 5px 11px; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface); color: var(--muted); font-size: 10.5px; cursor: pointer; transition: all .15s; }
+.agent-quick button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+.agent-quick button:disabled { opacity: .5; cursor: not-allowed; }
+.agent-input { display: flex; align-items: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border); }
+
+.agent-aside { display: grid; gap: 14px; }
+.agent-aside .aside-section { padding: 16px 18px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+.agent-aside h3 { margin: 0 0 12px; font-size: 12.5px; }
+.agent-tool-group { padding: 10px 0; border-bottom: 1px dashed var(--border); }
+.agent-tool-group:last-child { border-bottom: 0; padding-bottom: 0; }
+.agent-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
+.agent-tool-head strong { font-size: 12px; }
+.agent-tool-item { display: grid; gap: 2px; padding: 6px 9px; border-radius: 5px; background: var(--surface-soft); cursor: default; }
+.agent-tool-item + .agent-tool-item { margin-top: 5px; }
+.agent-tool-item code { color: var(--primary); font-size: 11px; }
+.agent-tool-item small { color: var(--subtle); font-size: 9.5px; }
+.agent-rules { margin: 0; padding-left: 16px; color: var(--muted); font-size: 11px; line-height: 1.9; }
+
+@media (max-width: 1180px) {
+  .agent-layout { grid-template-columns: minmax(0, 1fr); }
+  .agent-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .agent-metrics { grid-template-columns: minmax(0, 1fr); }
+  .agent-stream { padding: 14px; }
+  .agent-input { padding: 12px 14px; }
+}
+
+/* ============================================================
+   技能安全治理 (SECURITY GOVERNANCE)
+   ============================================================ */
+.security-page { display: flex; flex-direction: column; gap: 18px; }
+.sec-hero { display: flex; justify-content: space-between; gap: 20px; padding: 22px 24px; border: 1px solid rgba(78,226,255,.18); border-radius: 12px; background: linear-gradient(135deg, rgba(11,22,38,.92), rgba(9,18,32,.86)); box-shadow: inset 0 0 60px rgba(57,217,255,.05); }
+.sec-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .16em; color: #4ee2ff; text-transform: uppercase; }
+.sec-hero-copy h1 { margin: 10px 0 6px; font-size: 26px; background: linear-gradient(92deg, #7ceaff, #b98cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sec-hero-copy p { max-width: 780px; margin: 0 0 12px; color: #91a5bc; line-height: 1.7; }
+.sec-policy { display: flex; flex-wrap: wrap; gap: 8px; }
+.sec-hero-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.sec-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.sec-stat { border: 1px solid #1d344f; border-radius: 10px; background: rgba(12,23,38,.8); padding: 14px 16px; }
+.sec-stat.ok { border-color: rgba(53,227,174,.35); }
+.sec-stat.warn { border-color: rgba(255,189,98,.35); }
+.sec-stat.danger { border-color: rgba(255,100,137,.4); }
+.sec-stat .ant-statistic-title { font-size: 12px; color: #91a5bc; }
+.sec-stat .ant-statistic-content { font-size: 22px; }
+.sec-alert { border-radius: 10px; }
+.sec-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.sec-muted { color: #7f93ab; font-size: 12px; }
+.sec-cell { display: flex; gap: 10px; align-items: center; }
+.sec-cell .anticon { color: #4ee2ff; font-size: 16px; }
+.sec-cell strong { display: block; }
+.sec-cell small { display: block; color: #7f93ab; font-size: 12px; word-break: break-all; }
+.sec-risk-high { color: #ff6489; font-weight: 700; }
+.sec-risk-mid { color: #ffbd62; font-weight: 600; }
+.sec-risk-low { color: #35e3ae; font-weight: 600; }
+.sec-watermark { color: #b98cff; letter-spacing: .06em; }
+.sec-report-title { display: inline-flex; align-items: center; gap: 8px; }
+.sec-report-body { display: flex; flex-direction: column; gap: 14px; }
+.sec-findings { display: flex; flex-direction: column; gap: 10px; }
+.sec-finding { padding: 12px 14px; border: 1px solid #1d344f; border-left-width: 3px; border-radius: 8px; background: rgba(12,23,38,.72); }
+.sec-finding.sev-critical { border-left-color: #ff6489; }
+.sec-finding.sev-high { border-left-color: #ff9c6e; }
+.sec-finding.sev-medium { border-left-color: #ffbd62; }
+.sec-finding.sev-low { border-left-color: #4ee2ff; }
+.sec-finding-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sec-finding p { margin: 8px 0 0; color: #b7c8dc; font-size: 13px; }
+.sec-finding pre, .sec-sig { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #060d18; color: #9fe8ff; font-size: 12px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+
+/* GitHub 导入安全审查面板 (先审核, 后下载) */
+.github-review-panel { margin: 12px 0 4px; padding: 12px 14px; border: 1px solid #1d344f; border-left-width: 3px; border-radius: 8px; background: rgba(12,23,38,.72); display: flex; flex-direction: column; gap: 6px; }
+.github-review-panel.passed { border-left-color: #35e3ae; }
+.github-review-panel.pending { border-left-color: #ffbd62; }
+.github-review-panel.blocked { border-left-color: #ff6489; background: rgba(48,12,22,.55); }
+.github-review-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.github-review-head code { color: #b98cff; font-size: 12px; }
+.github-review-panel p { margin: 0; color: #b7c8dc; font-size: 13px; line-height: 1.6; }
+.github-review-finding { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #d8e6f5; }
+.github-review-finding b { color: #ff9c6e; }
+.github-review-finding code { color: #7f93ab; }
+.github-preview-actions { display: flex; gap: 8px; }
+
+/* 上传技能包安全预检 */
+.sec-upload { margin-top: -4px; }
+.sec-upload .ant-upload-drag { border: 1px dashed rgba(78,226,255,.32); background: rgba(9,18,32,.72); border-radius: 12px; padding: 6px 0; }
+.sec-upload .ant-upload-drag:hover { border-color: rgba(78,226,255,.6); }
+.sec-upload-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #eaf4ff; }
+.sec-upload-title .anticon { color: #4ee2ff; margin-right: 6px; }

@@ -1,0 +1,368 @@
+{
+  "schema": "skillhub.security-rules/v1",
+  "engine": "SEC-ENGINE 2.0.0",
+  "updated_at": "2026-09-18",
+  "description": "技能安全静态扫描规则库 (签名库以数据文件形式独立存放, 可热更新与审计)",
+  "rules": [
+    {
+      "id": "EXEC-01",
+      "category": "execution",
+      "severity": "critical",
+      "title": "系统命令执行",
+      "detail": "调用操作系统命令并可能拼接外部输入, 存在任意命令执行风险",
+      "scope": "code",
+      "pattern": "(?i)(os\\.system\\s*\\(|subprocess\\.(run|call|check_output|check_call|Popen)\\s*\\([^)]{0,120}shell\\s*=\\s*True|child_process\\.(exec|execSync|spawnSync)\\s*\\(|Runtime\\.getRuntime\\(\\)\\s*\\.\\s*exec|Invoke-Expression|Start-Process\\s+[^;]{0,60}-Command)",
+      "signature_encoded": false
+    },
+    {
+      "id": "EXEC-02",
+      "category": "execution",
+      "severity": "high",
+      "title": "动态代码求值",
+      "detail": "使用 eval/exec/Function 等动态求值, 常被用于隐藏恶意逻辑",
+      "scope": "code",
+      "pattern": "(?i)(\\beval\\s*\\(|\\bexec\\s*\\(|new\\s+Function\\s*\\(|compile\\s*\\([^)]{0,40}exec\\b)",
+      "signature_encoded": false
+    },
+    {
+      "id": "EXEC-03",
+      "category": "execution",
+      "severity": "high",
+      "title": "反射/内联脚本加载",
+      "detail": "通过反射或内联脚本执行远程内容",
+      "scope": "code",
+      "pattern": "(?i)(Invoke-WebRequest[^\\n]{0,80}\\|\\s*(IEX|Invoke-Expression)|iex\\s*\\(\\s*New-Object|powershell\\s+-enc\\s+[A-Za-z0-9+/=]{20,})",
+      "signature_encoded": false
+    },
+    {
+      "id": "OBF-01",
+      "category": "obfuscation",
+      "severity": "critical",
+      "title": "Base64 编码载荷管道执行",
+      "detail": "把编码后的载荷解码后直接交给 shell 执行, 典型的免杀/投毒手法",
+      "scope": "code",
+      "pattern": "(?i)((base64|b64decode|frombase64string)[^\\n]{0,60}(\\|\\s*(sudo\\s+)?(ba)?sh|Invoke-Expression|\\.decode\\s*\\(\\s*\\)\\s*\\))|echo\\s+[A-Za-z0-9+/]{80,}={0,2}\\s*\\|)",
+      "signature_encoded": false
+    },
+    {
+      "id": "OBF-02",
+      "category": "obfuscation",
+      "severity": "high",
+      "title": "字符编码拼接隐藏",
+      "detail": "大量十六进制/字符码拼接, 常见于隐藏字符串",
+      "scope": "code",
+      "pattern": "(?i)(\\\\x[0-9a-fA-F]{2}(\\\\x[0-9a-fA-F]{2}){8,}|String\\.fromCharCode\\s*\\((\\s*\\d+\\s*,){6,}|chr\\s*\\(\\s*\\d+\\s*\\)\\s*\\+\\s*chr\\s*\\()",
+      "signature_encoded": false
+    },
+    {
+      "id": "OBF-03",
+      "category": "obfuscation",
+      "severity": "medium",
+      "title": "超长单行压缩代码",
+      "detail": "出现超长单行代码, 建议人工确认是否为混淆内容",
+      "scope": "code",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "NET-01",
+      "category": "network",
+      "severity": "critical",
+      "title": "远程脚本管道安装",
+      "detail": "curl|wget 输出直接交给 shell 执行, 供应链投毒高发手法",
+      "scope": "code",
+      "pattern": "(?i)(curl\\s+[^\\n|]{0,140}\\|\\s*(sudo\\s+)?(ba)?sh|wget\\s+[^\\n|]{0,140}\\|\\s*(sudo\\s+)?(ba)?sh|iwr\\s+[^\\n|]{0,140}\\|\\s*iex)",
+      "signature_encoded": false
+    },
+    {
+      "id": "NET-02",
+      "category": "network",
+      "severity": "high",
+      "title": "外联已知回传/临时域名",
+      "detail": "向 pastebin、webhook、内网穿透等域名外发数据, 存在数据外泄风险",
+      "scope": "code",
+      "pattern": "(?i)(pastebin\\.com|transfer\\.sh|ngrok\\.(io|free)|webhook\\.site|requestbin|pipedream\\.net|0x0\\.st|termbin\\.com|discord(app)?\\.com/api/webhooks|t\\.me/|burpcollaborator|interact\\.sh|dnslog\\.)",
+      "signature_encoded": false
+    },
+    {
+      "id": "NET-03",
+      "category": "network",
+      "severity": "high",
+      "title": "环境变量外发",
+      "detail": "把环境变量/进程环境通过 HTTP 外发, 常用于窃取凭据",
+      "scope": "code",
+      "pattern": "(?i)((requests|urllib|httpx|aiohttp|axios|fetch|http\\.request|net\\.http)\\b[^\\n]{0,140}(os\\.environ|process\\.env|getenv|process\\.environment)|(os\\.environ|process\\.env)[^\\n]{0,80}(requests|httpx|axios|fetch)\\s*\\.\\s*post)",
+      "signature_encoded": false
+    },
+    {
+      "id": "NET-04",
+      "category": "network",
+      "severity": "low",
+      "title": "明文 HTTP 通信",
+      "detail": "使用 http:// 明文协议传输, 不符合金融行业传输安全要求",
+      "scope": "code",
+      "pattern": "(?i)http://([a-z0-9-]+[.])+[a-z]{2,}",
+      "signature_encoded": false
+    },
+    {
+      "id": "CRED-01",
+      "category": "credential",
+      "severity": "critical",
+      "title": "读取敏感凭据文件",
+      "detail": "访问 SSH 私钥、云凭据、浏览器口令库等, 属于典型窃密行为",
+      "scope": "code",
+      "pattern": "(?i)(id_rsa|id_ed25519|\\.ssh/|\\.aws/credentials|\\.netrc|\\.kube/config|keychain|Login\\s*Data|cookies\\.sqlite|wallet\\.dat|/etc/shadow|/etc/passwd|SAM\\s+file|lsass)",
+      "signature_encoded": false
+    },
+    {
+      "id": "CRED-02",
+      "category": "credential",
+      "severity": "high",
+      "title": "硬编码密钥/令牌",
+      "detail": "代码中出现疑似真实密钥, 存在泄漏与冒用风险",
+      "scope": "code",
+      "pattern": "(?i)((AKIA|ASIA)[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9]{20,}|-----BEGIN\\s+(RSA|OPENSSH|EC|PGP)\\s+PRIVATE\\s+KEY-----)",
+      "signature_encoded": false
+    },
+    {
+      "id": "CRED-03",
+      "category": "credential",
+      "severity": "medium",
+      "title": "硬编码弱口令",
+      "detail": "代码中硬编码口令/密码, 建议改用凭据托管",
+      "scope": "code",
+      "pattern": "(?i)(password|passwd|pwd|secret|apikey|api_key|access_key)\\s*[:=]\\s*['\"][^'\"\\s]{6,}['\"]",
+      "signature_encoded": false
+    },
+    {
+      "id": "PERS-01",
+      "category": "persistence",
+      "severity": "high",
+      "title": "写入持久化启动项",
+      "detail": "篡改计划任务/开机启动/服务, 属于持久化后门常见手法",
+      "scope": "code",
+      "pattern": "(?i)(crontab\\s+-[ler]|/etc/cron\\.|systemctl\\s+(enable|daemon-reload|start)|schtasks\\s+/create|reg\\s+add[^\\n]{0,80}CurrentVersion\\\\Run|CurrentVersion\\\\RunOnce|launchctl\\s+load|\\.bashrc|\\.profile\\s*>>)",
+      "signature_encoded": false
+    },
+    {
+      "id": "PERS-02",
+      "category": "persistence",
+      "severity": "medium",
+      "title": "危险权限位变更",
+      "detail": "设置 setuid 或 777 权限, 提升权限并扩大攻击面",
+      "scope": "code",
+      "pattern": "(?i)(chmod\\s+(777|4755|\\+s)|setcap\\s+|Set-ExecutionPolicy\\s+(Unrestricted|Bypass))",
+      "signature_encoded": false
+    },
+    {
+      "id": "DEST-01",
+      "category": "destructive",
+      "severity": "critical",
+      "title": "破坏性删除/格式化",
+      "detail": "递归删除根目录、格式化磁盘等破坏性指令",
+      "scope": "code",
+      "pattern": "(?i)(rm\\s+-rf\\s+(/|~|\\$\\{?HOME\\}?)(\\s|$)|rm\\s+-rf\\s+/\\*|del\\s+/[fsq]{1,3}\\s+[a-z]:\\\\|format\\s+[a-z]:|diskpart|mkfs\\.|dd\\s+if=[^\\n]{0,40}of=/dev/)",
+      "signature_encoded": false
+    },
+    {
+      "id": "DEST-02",
+      "category": "destructive",
+      "severity": "critical",
+      "title": "数据库破坏性语句",
+      "detail": "DROP/TRUNCATE 等不可逆的数据库操作",
+      "scope": "code",
+      "pattern": "(?i)(DROP\\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\\s+TABLE|DELETE\\s+FROM\\s+[a-z_\\.]+\\s*(;|$))",
+      "signature_encoded": false
+    },
+    {
+      "id": "DEST-03",
+      "category": "destructive",
+      "severity": "high",
+      "title": "关机/停服指令",
+      "detail": "下发关机、停服指令会影响生产可用性",
+      "scope": "code",
+      "pattern": "(?i)(shutdown\\s+(/s|/r|-h|-r|now)|halt\\s+-p|init\\s+0|Stop-Computer|Restart-Computer|kubectl\\s+delete\\s+(ns|namespace|deploy))",
+      "signature_encoded": false
+    },
+    {
+      "id": "MAL-01",
+      "category": "malware",
+      "severity": "critical",
+      "title": "病毒测试特征串 (EICAR)",
+      "detail": "文件命中 EICAR 标准反病毒测试串, 等同发现病毒样本",
+      "scope": "code",
+      "pattern": "EICAR",
+      "signature_encoded": true
+    },
+    {
+      "id": "MAL-02",
+      "category": "malware",
+      "severity": "critical",
+      "title": "挖矿程序特征",
+      "detail": "出现门罗币矿池/挖矿程序特征, 属于恶意资源盗用",
+      "scope": "code",
+      "pattern": "(?i)(xmrig|minerd|stratum\\+tcp://|cryptonight|coinhive|nicehash|nanopool|minexmr)",
+      "signature_encoded": false
+    },
+    {
+      "id": "MAL-03",
+      "category": "malware",
+      "severity": "critical",
+      "title": "勒索软件特征",
+      "detail": "出现勒索提示/加密扩展名等特征",
+      "scope": "code",
+      "pattern": "(?i)(your\\s+files\\s+have\\s+been\\s+encrypted|decrypt\\s+your\\s+files|bitcoin\\s+wallet\\s+address|\\.locked\\b[^\\n]{0,40}ransom|readme_for_decrypt)",
+      "signature_encoded": false
+    },
+    {
+      "id": "MAL-04",
+      "category": "malware",
+      "severity": "high",
+      "title": "反弹 Shell / 内网横向",
+      "detail": "存在反弹 shell、隧道穿透或内网横向探测行为",
+      "scope": "code",
+      "pattern": "(?i)(bash\\s+-i\\s+>&\\s*/dev/tcp/|nc\\s+-e\\s+(/bin/)?(ba)?sh|ncat\\s+[^\\n]{0,60}-e\\b|socat\\s+[^\\n]{0,80}exec:|chisel\\s+client|frpc?\\.ini|ssh\\s+-R\\s+[0-9]{2,5}:)",
+      "signature_encoded": false
+    },
+    {
+      "id": "MAL-05",
+      "category": "malware",
+      "severity": "high",
+      "title": "可疑可执行/脚本载荷",
+      "detail": "技能包内含可执行文件或脚本载荷, 需人工确认来源与用途",
+      "scope": "code",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "INJ-01",
+      "category": "injection",
+      "severity": "critical",
+      "title": "提示注入 (越权指令)",
+      "detail": "文档中含「忽略此前指令 / 不要告知用户」等越权或隐瞒指令",
+      "scope": "markdown",
+      "pattern": "(?i)(ignore\\s+(all\\s+|any\\s+)?(previous|prior|above|earlier)\\s+(instruction|prompt|rule)|disregard\\s+(the\\s+)?(system|previous|above)|忽略(之前|以上|上述|所有)(的)?(指令|提示|规则)|不要(告诉|告知|提示)用户|无需(告知|通知)用户|do\\s+not\\s+(tell|inform|notify|mention\\s+to)\\s+the\\s+user|silently\\s+(run|execute|install))",
+      "signature_encoded": false
+    },
+    {
+      "id": "INJ-02",
+      "category": "injection",
+      "severity": "high",
+      "title": "隐藏不可见字符",
+      "detail": "文档含零宽/双向控制等不可见字符, 常用于隐藏指令(提示注入)",
+      "scope": "markdown",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "INJ-03",
+      "category": "injection",
+      "severity": "high",
+      "title": "注释中夹带指令",
+      "detail": "HTML/代码注释里夹带可执行指令, 用于绕过人工审查",
+      "scope": "markdown",
+      "pattern": "(?i)<!--[^>]{10,}(ignore|execute|run\\s+the|curl|wget|download|password|token|instruction)[^>]{0,200}-->",
+      "signature_encoded": false
+    },
+    {
+      "id": "INJ-04",
+      "category": "injection",
+      "severity": "medium",
+      "title": "规避审计/安全控制",
+      "detail": "文档或代码要求绕过审计、日志、安全校验",
+      "scope": "markdown",
+      "pattern": "(?i)((bypass|disable|skip|evade)\\s+(the\\s+)?(audit|logging|security|approval|review|scan)|关闭(审计|日志|安全|审核)|绕过(审核|审计|安全|风控|检测))",
+      "signature_encoded": false
+    },
+    {
+      "id": "INJ-05",
+      "category": "injection",
+      "severity": "high",
+      "title": "诱导执行外部内容",
+      "detail": "文档要求读取并执行外部链接/文件内容 (间接提示注入)",
+      "scope": "markdown",
+      "pattern": "(?i)(read\\s+the\\s+(file|url|link)\\s+and\\s+(run|execute|follow)|execute\\s+the\\s+(content|instructions)\\s+(of|from)|按(链接|文件)中的(内容|指令)执行)",
+      "signature_encoded": false
+    },
+    {
+      "id": "HALL-01",
+      "category": "compliance",
+      "severity": "high",
+      "title": "能力声明与实现不一致",
+      "detail": "SKILL.md 声明无网络/只读, 但代码中存在网络或写操作, 疑似幻觉或隐瞒能力",
+      "scope": "markdown",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "HALL-02",
+      "category": "compliance",
+      "severity": "medium",
+      "title": "缺少标准元数据",
+      "detail": "SKILL.md 缺少 name/description 等标准字段, 影响可用性与审查",
+      "scope": "markdown",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "SUP-01",
+      "category": "supply_chain",
+      "severity": "medium",
+      "title": "依赖未固定版本",
+      "detail": "依赖未锁定版本, 存在被投毒/供应链漂移风险",
+      "scope": "code",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "SUP-02",
+      "category": "supply_chain",
+      "severity": "high",
+      "title": "从 URL 直接安装依赖",
+      "detail": "从裸 URL 安装依赖或下载可执行文件",
+      "scope": "code",
+      "pattern": "(?i)((pip|pip3)\\s+install\\s+https?://|npm\\s+(i|install)\\s+https?://|\\bnpx\\s+https?://|curl\\s+-[oO]\\s+https?://[^\\n]{0,60}\\.(sh|ps1|exe|bat)\\b|go\\s+get\\s+https?://)",
+      "signature_encoded": false
+    },
+    {
+      "id": "SUP-03",
+      "category": "supply_chain",
+      "severity": "high",
+      "title": "容器逃逸风险配置",
+      "detail": "容器特权/宿主机挂载, 可能突破隔离边界",
+      "scope": "code",
+      "pattern": "(?i)(--privileged|--net[=\\s]+host|/var/run/docker\\.sock|--pid[=\\s]+host|cap-add[=\\s]+SYS_ADMIN)",
+      "signature_encoded": false
+    },
+    {
+      "id": "FILE-01",
+      "category": "integrity",
+      "severity": "critical",
+      "title": "路径穿越 (Zip Slip)",
+      "detail": "包内文件路径含 ../ 或绝对路径, 解压可覆盖系统文件",
+      "scope": "path",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "FILE-02",
+      "category": "integrity",
+      "severity": "medium",
+      "title": "包缺失签名清单",
+      "detail": "交付包缺少 manifest.json / 签名, 无法验证完整性与来源",
+      "scope": "package",
+      "pattern": null,
+      "signature_encoded": false
+    },
+    {
+      "id": "FILE-03",
+      "category": "integrity",
+      "severity": "medium",
+      "title": "包内文件被篡改",
+      "detail": "文件内容哈希与签名清单不一致, 说明包在传输/存储中被改动",
+      "scope": "package",
+      "pattern": null,
+      "signature_encoded": false
+    }
+  ]
+}

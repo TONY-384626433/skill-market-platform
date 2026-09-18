@@ -208,22 +208,24 @@ func (s *SkillService) CreateSkill(sk *model.Skill) error {
 	if sk.EndpointProto == "" {
 		sk.EndpointProto = "http"
 	}
-	_, err := s.db.Exec(`
+	err := s.db.QueryRow(`
 		INSERT INTO skills (skill_key, name, version, category, sub_category, tags,
 		       summary, description, skill_type, endpoint_url, endpoint_protocol,
 		       manifest, dependencies, permissions, interface_spec,
 		       stability, status, visibility, author_id, team_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending_approval',$17,$18,NULLIF($19,''))
+		RETURNING id
 	`, sk.SkillKey, sk.Name, sk.Version, sk.Category, sk.SubCategory,
 		pq.Array(sk.Tags),
 		sk.Summary, sk.Description,
 		sk.SkillType, sk.EndpointURL, sk.EndpointProto,
 		sk.Manifest, sk.Dependencies, sk.Permissions, sk.InterfaceSpec,
 		sk.Stability, sk.Visibility, sk.AuthorID, sk.TeamID,
-	)
+	).Scan(&sk.ID)
 	if err != nil {
 		return fmt.Errorf("create skill: %w", err)
 	}
+	sk.Status = "pending_approval"
 	return nil
 }
 
@@ -356,6 +358,39 @@ func (s *SkillService) ReviewSkill(skillID, reviewerID, verdict, comment string)
 	return tx.Commit()
 }
 
+// LatestAuditState 读取技能最近一次可用性审核结论 (「技能可用性审核」门禁使用)
+func (s *SkillService) LatestAuditState(skillID string) (status, grade, summary string, score float64, at *time.Time, err error) {
+	var sc sql.NullFloat64
+	err = s.db.QueryRow(`
+		SELECT status, COALESCE(grade,''), COALESCE(summary,''), score, created_at
+		FROM skill_audits WHERE skill_id=$1 ORDER BY created_at DESC LIMIT 1
+	`, skillID).Scan(&status, &grade, &summary, &sc, &at)
+	if err == sql.ErrNoRows {
+		return "", "", "", 0, nil, nil
+	}
+	if err != nil {
+		// 审核表尚未就绪时不应阻塞主流程
+		return "", "", "", 0, nil, nil
+	}
+	score = sc.Float64
+	return status, grade, summary, score, at, nil
+}
+
+// HasPassedAudit 技能是否已通过可用性审核 (未通过不允许发布/安装)
+func (s *SkillService) HasPassedAudit(skillID string) (bool, string, error) {
+	status, _, summary, _, _, err := s.LatestAuditState(skillID)
+	if err != nil {
+		return false, summary, err
+	}
+	if status == "" {
+		return false, "尚未运行可用性审核", nil
+	}
+	if status != "passed" {
+		return false, summary, nil
+	}
+	return true, summary, nil
+}
+
 // UpdateSkill 更新技能
 func (s *SkillService) UpdateSkill(id string, updates map[string]interface{}) error {
 	// 简化实现: 仅更新允许的字段
@@ -376,12 +411,16 @@ func (s *SkillService) UpdateSkill(id string, updates map[string]interface{}) er
 
 // InstallSkill 安装技能 — 生成 API Token
 func (s *SkillService) InstallSkill(skillID, userID, version string) (*model.SkillInstallation, string, error) {
-	var currentVersion string
-	if err := s.db.QueryRow(`SELECT version FROM skills WHERE id=$1 AND status='published'`, skillID).Scan(&currentVersion); err != nil {
+	var currentVersion, auditStatus string
+	if err := s.db.QueryRow(`SELECT version, COALESCE(audit_status,'pending') FROM skills WHERE id=$1 AND status='published'`, skillID).Scan(&currentVersion, &auditStatus); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, "", fmt.Errorf("技能不存在或尚未发布")
 		}
 		return nil, "", err
+	}
+	// 可用性审核门禁: 未通过自动审核的技能不允许安装
+	if auditStatus != "passed" {
+		return nil, "", fmt.Errorf("技能未通过可用性审核 (当前状态: %s), 暂不可安装", auditStatus)
 	}
 	// 检查是否已安装
 	var existingID string

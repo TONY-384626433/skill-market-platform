@@ -86,7 +86,8 @@ go run ./cmd
 |---|---:|---:|---:|
 | 浏览、安装、评价、试玩 | 是 | 是 | 是 |
 | 提交技能、查看我的发布 | 否 | 是 | 是 |
-| 审核技能、查看全量审计 | 否 | 否 | 是 |
+| 对本人技能运行可用性自检 | 否 | 是 | 是 |
+| 运行全量可用性审核、发布门禁、全量审计 | 否 | 否 | 是 |
 
 服务端通过 JWT 中间件和 `RequireRole` 同时校验，前端菜单隐藏不作为权限边界。
 
@@ -108,9 +109,69 @@ go run ./cmd
 | `POST` | `/api/v1/gateway/invoke` | 登录 | 调用真实技能 |
 | `POST` | `/api/v1/skills` | 开发者/管理员 | 提交技能审核 |
 | `GET` | `/api/v1/skills/my/submissions` | 开发者/管理员 | 我的发布 |
-| `GET` | `/api/v1/admin/review-queue` | 管理员 | 审核队列 |
-| `POST` | `/api/v1/admin/skills/:id/review` | 管理员 | 通过或驳回 |
+| `GET` | `/api/v1/admin/review-queue` | 管理员 | 待人工复核队列 |
+| `POST` | `/api/v1/admin/skills/:id/review` | 管理员 | 通过或驳回（通过前必须已过可用性审核） |
 | `GET` | `/api/v1/admin/audit-logs` | 管理员 | 调用审计 |
+| `GET` | `/api/v1/admin/audit-overview` | 管理员 | 可用性审核概览 |
+| `GET` | `/api/v1/admin/audit-queue` | 管理员 | 审核队列（含最近结论与得分） |
+| `POST` | `/api/v1/admin/skills/:id/audit` | 管理员 | 运行可用性自动检测 |
+| `GET` | `/api/v1/admin/skills/:id/audits` | 管理员 | 技能审核历史 |
+| `GET` | `/api/v1/admin/audits/recent` | 管理员 | 最近检测流水 |
+| `GET` | `/api/v1/admin/audits/:auditId` | 管理员 | 单次审核报告 |
+| `POST` | `/api/v1/skills/:id/self-check` | 开发者/管理员 | 开发者自检（仅本人技能） |
+| `GET` | `/api/v1/skills/:id/audit-badge` | 公开 | 可用性徽章 |
+| `GET` | `/api/v1/agent/status` | 登录 | 智能体运行模式与可调度能力数 |
+| `GET` | `/api/v1/agent/tools` | 登录 | 智能体工具清单（来自真实 `tools/list`） |
+| `POST` | `/api/v1/agent/chat` | 登录 | 自然语言对话并自动编排技能 |
+
+## AI 智能体
+
+智能体把“自然语言”翻译成“技能调用”：
+
+```
+用户提问 → 工具发现（仅已过审技能）→ 编排决策 → 真实 tools/call → 汇总回答
+                                             ↑
+                          大模型 function calling　或　本地意图引擎（降级）
+```
+
+- **工具发现**：智能体可调度的工具不是写死的，而是从「已发布 + 已通过可用性审核」的技能上真实拓 `tools/list` 得到（带 60s 缓存）。未过审的技不可能被智能体调到。
+- **双模式**：
+  - `llm` — 配置了 `LLM_API_KEY` 时，用 OpenAI 兼容的 function calling 自主编排，最多 4 轮工具调用；
+  - `local-intent` — 未配置 Key（或大模型不可用）时自动降级为关键词意图引擎，演示环境永远可用。
+- **安全一致**：智能体侧同样执行敏感输入拦截（脱敏类技能白名单放行），并将每次调用写入 `skill_audit_logs`（`source_ip=agent`，带 trace_id）并计入技能调用量。
+
+启用大模型编排（OpenAI 兼容接口，任选一家）：
+
+```powershell
+$env:LLM_API_KEY  = "sk-xxxxxxxx"
+$env:LLM_API_BASE = "https://api.deepseek.com/v1"   # 或 https://api.openai.com/v1 等
+$env:LLM_MODEL    = "deepseek-chat"
+# 重启后端后 GET /api/v1/agent/status 会显示 mode=llm
+```
+
+验收：`python e2e_agent_test.py`（15 项断言：工具发现 / 四类意图真实调用 / 拦截 / 白名单 / 审计）。
+
+## 技能可用性审核
+
+审核要回答的问题不是"元数据填得全不全"，而是**"这个技能到底能不能正常用"**。引擎对每个技能跑 6 项检查并加权评分（总分 100）：
+
+| 检查项 | 类别 | 级别 | 检测内容 |
+|---|---|---|---|
+| `AVAIL-01` 元数据完整性 | 静态 | 致命 | `skill_key` 命名、名称/简介/分类、语义化版本、标签、责任人 |
+| `AVAIL-02` 接口定义可解析 | 静态 | 致命 | 接入形态白名单、`endpoint_url` 协议、`manifest` 结构与输入输出契约 |
+| `AVAIL-03` 服务可达与协议握手 | 运行 | 致命 | 真实发送 `initialize` + `tools/list`，校验协议版本与工具契约 |
+| `AVAIL-04` 核心功能可调用 | 运行 | 致命 | 按 `inputSchema` 自动生成探针入参并真实 `tools/call`，确认返回有效结果 |
+| `AVAIL-05` 响应性能基线 | 运行 | 重要 | 连续 3 次调用统计成功率、平均与峰值耗时 |
+| `AVAIL-06` 安全合规基线 | 安全 | 重要 | 权限声明、输出是否含明文 PII、网关敏感输入拦截是否一致 |
+
+判定规则：总分低于 70 或存在"致命"项失败 → **不合格**；90/80/70 分对应 A/B/C 等级。
+
+门禁：`POST /api/v1/admin/skills/:id/review` 通过发布前会校验审核结论，未通过返回 `409`；`POST /api/v1/skills/:id/install` 对未通过审核的技能直接拒绝安装。检测结果同时回写 `skills.audit_status / audit_score / last_audit_at`，并写入 `skill_audits` 与 `skill_reviews` 流水。
+
+```bash
+# 验收脚本（27 项断言，含故意构造的不可用技能必须被判不合格）
+python e2e_audit_test.py
+```
 
 ## 项目结构
 
@@ -133,3 +194,103 @@ cd frontend && npm run build
 ```
 
 建议发布前同时用桌面 `1440×1000` 和手机 `390×844` 视口检查市场、详情、登录、开发者与治理页面。
+
+## 技能安全治理 (供应链安全 · 可落地银行内网)
+
+面向「技能能不能进银行」的三道闸门：**查毒、防盗用、先审后下**。
+
+### 1. 静态安全扫描 (查毒 / 危险行为 / 提示注入)
+
+- 规则库外置为数据文件 `backend/rules/security-rules.json`（36 条规则 / 11 个分类），**不编入二进制**：
+  可独立升级、回滚、审计，同时避免病毒特征串被编入可执行文件导致引擎自身被杀软误报隔离（实测会触发）。
+- 未装载规则库时后端**拒绝启动**（fail-closed），不会出现「无规则放行」。
+- 分类覆盖：`malware`(病毒/挖矿/勒索/EICAR)、`execution`(命令执行/eval)、`obfuscation`(Base64 载荷)、
+  `network`(外联回传/环境变量外发)、`credential`(凭据窃取/硬编码密钥)、`persistence`、`destructive`、
+  `injection`(提示注入/零宽字符/注释夹带)、`supply_chain`(未固定依赖/URL 安装/容器逃逸)、
+  `compliance`(声明与实现不一致 —— 防幻觉/隐瞒能力)、`integrity`(路径穿越/签名缺失/篡改)。
+- 二进制载荷（含 NUL 的 exe/dll 等）仍做病毒特征匹配，查毒不因文件类型或编码绕过。
+- 结论三级：`safe` / `suspicious`(≥45 分或 ≥2 项高危) / `malicious`(任一严重项 → 阻断并隔离)。
+
+### 2. 防盗用 / 溯源
+
+- **指纹查重**：内容规范化 + SHA-256 + SimHash，改名重传同样命中（阈值 75%），命中即转人工复核。
+- **水印**：技能级 `WM-xxxx` + 单次交付 `DL-xxxx`（绑定下载人与时间），泄漏可反查到人。
+- **包签名**：交付包自动注入 `MANIFEST.skillhub.json`（逐文件 SHA-256 + HMAC-SHA256 签名）与
+  `.skillhub-provenance.json`，安装前可验签；内容被改动即判定 `tampered`。
+- **下载审计**：每次下载留痕（用户/IP/水印/通道），`/admin/download-audits` 可查。
+
+### 3. GitHub 导入门禁（先审核，后下载）
+
+- `GET /github/skills/download` **必须携带已通过审查的 `request_id`**，否则 403 `security_review_required`。
+- 流程：提交审查 → 抓包静态查毒 + 指纹查重 → `safe` 自动放行（可用 `IMPORT_AUTO_APPROVE=0` 改为全人工）/
+  `suspicious` 转人工复核 / `malicious` 直接阻断（**不允许人工放行**）→ 通过后下载才注入签名与水印。
+
+### 核心 API
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/security/rules` | 公开 | 规则库 + 引擎元信息 + 安全策略（可审计） |
+| GET | `/api/v1/skills/:id/security-badge` | 公开 | 技能安全徽章（结论/风险分/水印） |
+| POST | `/api/v1/github/import-requests` | 登录 | 提交外部技能安全审查（先审后下入口） |
+| GET | `/api/v1/github/import-requests/:reqId` | 登录 | 查询审查单 |
+| GET | `/api/v1/admin/security-overview` | 管理员 | 安全治理概览 |
+| GET | `/api/v1/admin/security-queue` | 管理员 | 技能安全队列 |
+| POST | `/api/v1/admin/skills/:id/security-scan` | 管理员 | 运行静态安全扫描 |
+| GET | `/api/v1/admin/security-scans[/:scanId]` | 管理员 | 扫描记录 / 报告详情 |
+| GET/POST | `/api/v1/admin/skills/:id/provenance[/verify]` | 管理员 | 溯源档案 / 完整性校验 |
+| GET | `/api/v1/admin/download-audits` | 管理员 | 下载审计（水印可反查） |
+| GET | `/api/v1/admin/import-requests` | 管理员 | 导入审查队列 |
+| POST | `/api/v1/admin/import-requests/:reqId/scan` | 管理员 | 重新审查 |
+| POST | `/api/v1/admin/import-requests/:reqId/decision` | 管理员 | 通过 / 驳回（阻断项不可放行） |
+| GET | `/api/v1/admin/security-rules/export` | 管理员 | 导出规则库（审计/备份） |
+
+### 验收脚本
+
+```bash
+# 引擎单测 (10 项: 安全技能/恶意样本/路径穿越/幻觉一致性/零宽注入/指纹查重/签名篡改/水印/规则库/fail-closed)
+go test ./internal/security/
+
+# 端到端 (27 项: 规则库→内部扫描→徽章→溯源→篡改检测→门禁 403→审查放行→签名复核→审计留痕→高危阻断)
+python backend/e2e_security_test.py
+```
+
+### 环境变量
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `SKILLHUB_SECURITY_RULES` | `rules/security-rules.json` | 规则库文件路径 |
+| `SKILLHUB_SIGNING_KEY` | 内置演示密钥 | 包签名/水印密钥（生产必须由密钥管理注入） |
+| `IMPORT_AUTO_APPROVE` | `1` | 审查结论为 `safe` 时是否自动放行（`0`=全部人工审批） |
+| `SEED_SKILLS_DIR` | `../seed-skills` | 本地技能包目录（扫描对象） |
+
+### 4. 上传包安全预检（入库前第一道闸门）
+
+```bash
+curl -F "file=@skill.zip" -H "Authorization: Bearer <admin-token>" \
+  http://localhost:8080/api/v1/admin/security/scan-package
+```
+
+- 支持 `.zip` 或单文件（上限 24MB / 200 个文件），上传即做：查毒 + 危险行为 + 提示注入 + 查重；
+- 命中任何严重项 → `blocked=true`（禁止入库）；结论写入扫描记录（`subject_type=package`，`trigger_type=upload`）；
+- 包内容只在内存与隔离临时目录中处理，**不执行任何技能代码**。
+
+### 5. 外部查毒引擎（ClamAV / YARA）适配
+
+- 自动探测 `clamscan` / `clamdscan` / `yara`；**有则调用并合并结论**（`MAL-06 ClamAV 命中` / `MAL-07 YARA 命中`，均为阻断级），
+- **无则降级**为内置特征库，并在 `/security/rules` 的 `engine.av_engines` 与扫描记录中标注 `available=false` + 原因，绝不静默假装扫过；
+- 可指定：`SKILLHUB_CLAMAV_BIN`、`SKILLHUB_YARA_BIN`、`SKILLHUB_YARA_RULES`、`SKILLHUB_AV_TIMEOUT`（默认 90s，超时记为高优先级待复核项）。
+
+### 6. 签名密钥管理（KMS 对接）
+
+- 解析顺序：`SKILLHUB_SIGNING_KEY_FILE`（推荐，对接 KMS/密钥管理挂载）> `SKILLHUB_SIGNING_KEY` > 内置演示密钥；
+- `SKILLHUB_ENV=production`（或 `prod`/`bank`）时若仍使用内置演示密钥 → **后端拒绝启动**；
+- 对外只公开密钥指纹 `key_id`（如 `kid_4f3339f8`），写入签名清单并参与签名载荷，可审计「签发所用密钥版本」，换密钥后旧签名自动失效。
+
+### 一键演示（银行汇报用）
+
+```bash
+python backend/demo_security.py
+```
+
+输出：引擎/策略/密钥指纹 → 内部 4 技能查毒 → 上传正常包（放行）/恶意包（阻断，列出 12 条命中规则）/路径穿越包（拦截）→ GitHub 未审核下载被 403 拒绝。
+恶意样本在 `backend/tools/security_samples.py` 中**运行时片段拼接 + XOR 编码**生成，不落盘明文，避免污染本机与误报。

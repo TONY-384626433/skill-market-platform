@@ -130,6 +130,22 @@ func (h *SkillHandler) ReviewSkill(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "驳回时必须填写原因"})
 		return
 	}
+	// 可用性审核门禁: 通过发布前必须已经过自动可用性检测且合格
+	if req.Verdict == "approve" {
+		passed, reason, err := h.svc.HasPassedAudit(c.Param("id"))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "可用性审核状态查询失败: " + err.Error()})
+			return
+		}
+		if !passed {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":        "该技能尚未通过可用性审核, 请先在「技能审核」中运行自动检测",
+				"audit_reason": reason,
+				"gate":         "availability_audit",
+			})
+			return
+		}
+	}
 	if err := h.svc.ReviewSkill(c.Param("id"), c.GetString("user_id"), req.Verdict, req.Comment); err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return

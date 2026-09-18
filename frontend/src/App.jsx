@@ -3,7 +3,7 @@ import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } f
 import { Alert, App as AntApp, Avatar, Badge, Button, ConfigProvider, Drawer, Dropdown, Layout, Popover, Skeleton, theme as antdTheme, Tooltip } from 'antd';
 import {
   ApiOutlined, AppstoreOutlined, AuditOutlined, BankOutlined, BellOutlined, CodeOutlined,
-  LoginOutlined, LogoutOutlined, MenuOutlined, PlusOutlined, SafetyCertificateOutlined,
+  LoginOutlined, LogoutOutlined, MenuOutlined, PlusOutlined, RobotOutlined, SafetyCertificateOutlined,
   SearchOutlined, ToolOutlined, UserOutlined,
 } from '@ant-design/icons';
 import AuthGate from './components/AuthGate';
@@ -17,6 +17,9 @@ const MarketPage = React.lazy(() => import('./pages/MarketPage'));
 const SkillDetailPage = React.lazy(() => import('./pages/SkillDetailPage'));
 const DeveloperPage = React.lazy(() => import('./pages/DeveloperPage'));
 const AdminPage = React.lazy(() => import('./pages/AdminPage'));
+const AuditPage = React.lazy(() => import('./pages/AuditPage'));
+const SecurityPage = React.lazy(() => import('./pages/SecurityPage'));
+const AgentPage = React.lazy(() => import('./pages/AgentPage'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const MyInstallationsPage = React.lazy(() => import('./pages/MyInstallationsPage'));
 const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
@@ -25,12 +28,15 @@ const BootScreen = React.lazy(() => import('./components/BootScreen'));
 
 const allNavigation = [
   { key: 'market', path: '/', label: '技能市场', icon: AppstoreOutlined },
+  { key: 'agent', path: '/agent', label: 'AI 智能体', icon: RobotOutlined, authenticated: true },
   { key: 'my', path: '/my', label: '我的技能', icon: ToolOutlined, authenticated: true },
   { key: 'dev', path: '/dev', label: '开发者工作台', icon: CodeOutlined, roles: ['developer', 'admin'] },
+  { key: 'audit', path: '/audit', label: '技能审核', icon: SafetyCertificateOutlined, roles: ['admin'] },
+  { key: 'security', path: '/security', label: '安全治理', icon: SafetyCertificateOutlined, roles: ['admin'] },
   { key: 'admin', path: '/admin', label: '平台治理', icon: AuditOutlined, roles: ['admin'] },
 ];
 
-const pageNames = { '/': '技能市场', '/my': '我的技能', '/dev': '开发者工作台', '/admin': '平台治理', '/login': '企业账号登录' };
+const pageNames = { '/': '技能市场', '/agent': 'AI 智能体', '/my': '我的技能', '/dev': '开发者工作台', '/audit': '技能审核', '/security': '安全治理', '/admin': '平台治理', '/login': '企业账号登录' };
 
 function Brand() {
   return <Link className="brand" to="/" aria-label="九江银行 SkillHub 首页"><span className="brand-mark"><BankOutlined /><i /></span><span><strong>SkillHub</strong><small>AI CAPABILITY OS</small></span></Link>;
@@ -139,7 +145,10 @@ function Shell() {
                 <Route path="/" element={<MarketPage />} />
                 <Route path="/skills/:id" element={<SkillDetailPage />} />
                 <Route path="/my" element={<AuthGate><MyInstallationsPage /></AuthGate>} />
+                <Route path="/agent" element={<AuthGate><AgentPage /></AuthGate>} />
                 <Route path="/dev" element={<AuthGate roles={['developer', 'admin']}><DeveloperPage /></AuthGate>} />
+                <Route path="/audit" element={<AuthGate roles={['admin']}><AuditPage /></AuthGate>} />
+                <Route path="/security" element={<AuthGate roles={['admin']}><SecurityPage /></AuthGate>} />
                 <Route path="/admin" element={<AuthGate roles={['admin']}><AdminPage /></AuthGate>} />
                 <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
@@ -148,7 +157,7 @@ function Shell() {
           </Content>
 
           <nav className="mobile-bottom-nav" aria-label="移动端导航">
-            {allNavigation.slice(0, 2).map(({ key, path, label, icon: Icon }) => <Link key={key} to={path} className={(path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)) ? 'active' : ''}><Icon /><span>{label}</span></Link>)}
+            {navItems.slice(0, 2).map(({ key, path, label, icon: Icon }) => <Link key={key} to={path} className={(path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)) ? 'active' : ''}><Icon /><span>{label}</span></Link>)}
             <Tooltip title={user ? '账号' : '登录'}><button onClick={() => user ? setDrawerOpen(true) : navigate('/login')}><UserOutlined /><span>{user ? '账号' : '登录'}</span></button></Tooltip>
           </nav>
         </Layout>

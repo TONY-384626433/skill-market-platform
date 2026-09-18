@@ -2,7 +2,12 @@
 # SkillHub — 一键启动 (比赛演示模式)
 # 启动: Docker 基础设施 + 技能容器 → Go 后端 → 前端 → 公网隧道
 # 用法: 双击 start-demo.bat 或运行 powershell -File start-demo.ps1
+#      加 -OpenBrowser 启动完成后自动打开浏览器
 # ============================================================
+
+param(
+    [switch]$OpenBrowser
+)
 
 $ErrorActionPreference = "Continue"
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -24,11 +29,33 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  ✗ Docker 未运行, 请先启动 Docker Desktop" -ForegroundColor Red
 } else {
     Push-Location "$ROOT\docker"
-    docker compose up -d --build 2>&1 | Out-Null
+    # 只拉起演示必需的服务, 避免 compose 去 pull es/vault/rabbitmq 等未缓存镜像 (离线/网络受限时会整体失败)
+    docker compose up -d --no-build postgres redis minio skill-runner 2>&1 | Out-Null
     Pop-Location
+    # 兜底: compose 失败 (例如 Docker 刚重启/镜像未缓存) 时, 直接重启已存在的容器
+    $needStart = @()
+    foreach ($c in @("skillhub-postgres", "skillhub-redis", "skillhub-minio", "skillhub-runner")) {
+        $st = docker ps -a --filter "name=$c" --format "{{.Names}}:{{.Status}}" 2>$null
+        if ($st -match "Exited|Created") { $needStart += $c }
+    }
+    if ($needStart.Count -gt 0) {
+        Write-Host "  ⚠ 重启已停止的容器: $($needStart -join ', ')" -ForegroundColor Yellow
+        docker start @needStart 2>&1 | Out-Null
+        Start-Sleep 8
+    }
     $runner = docker ps --filter "name=skillhub-runner" --format "{{.Names}}" 2>$null
     if ($runner) { Write-Host "  ✓ 技能容器运行中: $runner" -ForegroundColor Green }
     else { Write-Host "  ⚠ 技能容器未就绪, 等待 5s 重试..." -ForegroundColor Yellow; Start-Sleep 5 }
+    $pg = docker ps --filter "name=skillhub-postgres" --format "{{.Names}}" 2>$null
+    if ($pg) { Write-Host "  ✓ 数据库运行中: $pg" -ForegroundColor Green }
+    else { Write-Host "  ✗ 数据库未启动! 后端将无法连接 5432" -ForegroundColor Red }
+
+    # 等 Postgres 真正就绪 (健康检查), 否则后端启动时 Ping 失败直接退出
+    for ($i = 0; $i -lt 20; $i++) {
+        $ready = docker exec skillhub-postgres pg_isready -U skillhub 2>$null
+        if ($ready -match "accepting connections") { Write-Host "  ✓ Postgres 已就绪" -ForegroundColor Green; break }
+        Start-Sleep 2
+    }
 }
 
 # ============ 2. Go 后端 (8080) ============
@@ -85,7 +112,23 @@ try {
 Write-Host "[5/5] 公网隧道 ..." -ForegroundColor Yellow
 $tunnelUrl = $null
 
-# 5a. 先试 localhost.run (免注册, 国内可用)
+# 5a. 复用已在运行的隧道 (重复双击启动时不再新建隧道)
+$cfLog = "$env:TEMP\skillhub-cf.log"
+$cfErr = "$env:TEMP\skillhub-cf.err"
+$cfRunning = Get-Process -Name cloudflared -ErrorAction SilentlyContinue
+if ($cfRunning) {
+    # cloudflared 把 URL 打在 stderr, 两个日志都扫一遍
+    $prevLog = (Get-Content $cfLog -Raw -ErrorAction SilentlyContinue) + "`n" + (Get-Content $cfErr -Raw -ErrorAction SilentlyContinue)
+    if ($prevLog -match "https://([a-z0-9-]+\.trycloudflare\.com)") {
+        $tunnelUrl = "https://$($matches[1])"
+        Write-Host "  ✓ 复用已有 Cloudflare 隧道: $tunnelUrl" -ForegroundColor Green
+    } else {
+        Write-Host "  ✓ 已有隧道进程在运行 (cloudflared PID $($cfRunning.Id -join ','))" -ForegroundColor Green
+    }
+}
+
+# 5b. 先试 localhost.run (免注册, 国内可用)
+if (-not $tunnelUrl) {
 $lhrLog = "$env:TEMP\skillhub-lhr.log"
 Remove-Item $lhrLog -ErrorAction SilentlyContinue
 Start-Process -FilePath "ssh" -ArgumentList "-o","StrictHostKeyChecking=no","-o","ServerAliveInterval=30","-N","-R","80:localhost:4173","nokey@localhost.run" -WindowStyle Hidden -RedirectStandardOutput $lhrLog -RedirectStandardError "$env:TEMP\skillhub-lhr.err"
@@ -100,14 +143,15 @@ for ($i = 0; $i -lt 15; $i++) {
         break
     }
 }
+}
 
-# 5b. localhost.run 不可用时回退 Cloudflare
+# 5c. localhost.run 不可用时回退 Cloudflare
 if (-not $tunnelUrl) {
     Write-Host "  ⚠ localhost.run 不可用, 尝试 Cloudflare ..." -ForegroundColor Yellow
     $cf = Get-Command cloudflared -ErrorAction SilentlyContinue
     if (-not $cf) { $cfPath = "C:\Program Files (x86)\cloudflared\cloudflared.exe"; if (Test-Path $cfPath) { $cf = $cfPath } }
     if ($cf) {
-        $logFile = "$env:TEMP\skillhub-cf.log"
+        $logFile = $cfLog
         # $cf 可能是命令对象或字符串路径, 统一取二进制路径
         $cfBin = if ($cf -is [string]) { $cf } else { $cf.Source }
         $proc = Start-Process -FilePath $cfBin -ArgumentList "tunnel","--url","http://localhost:4173","--protocol","http2","--no-autoupdate" -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError "$env:TEMP\skillhub-cf.err"
@@ -135,6 +179,7 @@ Write-Host "   ✅ 启动完成! 访问地址:" -ForegroundColor Green
 Write-Host ""
 Write-Host "   本地完整版:  http://localhost:4173" -ForegroundColor White
 if ($tunnelUrl) { Write-Host "   公网完整版:  $tunnelUrl" -ForegroundColor White }
+else { Write-Host "   公网完整版:  未建立 (如需公网演示请检查网络/隧道进程)" -ForegroundColor DarkGray }
 Write-Host ""
 Write-Host "   登录账号:    zhangsan / lisi / admin (密码: demo)" -ForegroundColor DarkGray
 Write-Host "  ────────────────────────────────────────────" -ForegroundColor Cyan
@@ -142,4 +187,16 @@ Write-Host ""
 Write-Host "  提示: 公网隧道 URL 每次启动会变化, 电脑需保持开机" -ForegroundColor DarkGray
 Write-Host "  停止全部: 运行 stop-all.bat" -ForegroundColor DarkGray
 Write-Host ""
+
+# ============ 可选: 自动打开浏览器 ============
+if ($OpenBrowser) {
+    try {
+        Start-Process "http://localhost:4173"
+        Write-Host "  → 已在默认浏览器打开 http://localhost:4173" -ForegroundColor Cyan
+        Write-Host ""
+    } catch {
+        Write-Host "  ⚠ 自动打开浏览器失败, 请手动访问 http://localhost:4173" -ForegroundColor Yellow
+    }
+}
+
 pause
