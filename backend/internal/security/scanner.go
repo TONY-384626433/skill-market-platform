@@ -260,10 +260,34 @@ func ScanFiles(subject ScanSubject, files []model.SkillFile) *model.SecurityScan
 
 // finalize 汇总打分与结论
 func finalize(scan *model.SecurityScan, elapsed time.Duration) {
+	scan.DurationMs = int(elapsed.Milliseconds())
+	rescore(scan)
+}
+
+// MergeFindings 合并额外发现 (如动态沙箱行为结论) 并重算结论
+func MergeFindings(scan *model.SecurityScan, extra []model.SecurityFinding) {
+	for _, f := range extra {
+		if f.CategoryCN == "" {
+			f.CategoryCN = categoryCN[f.Category]
+		}
+		if f.Score == 0 {
+			f.Score = severityScore[f.Severity]
+		}
+		if f.Severity == "critical" {
+			f.Blocking = true
+		}
+		scan.Findings = append(scan.Findings, f)
+	}
+	rescore(scan)
+}
+
+// rescore 重算计数 / 风险分 / 结论 / 等级 / 摘要
+func rescore(scan *model.SecurityScan) {
 	sort.SliceStable(scan.Findings, func(i, j int) bool {
 		return severityRank(scan.Findings[i].Severity) < severityRank(scan.Findings[j].Severity)
 	})
 	total := 0
+	scan.CriticalCount, scan.HighCount = 0, 0
 	for _, f := range scan.Findings {
 		total += f.Score
 		switch f.Severity {
@@ -278,7 +302,6 @@ func finalize(scan *model.SecurityScan, elapsed time.Duration) {
 	}
 	scan.RiskScore = total
 	scan.FindingCount = len(scan.Findings)
-	scan.DurationMs = int(elapsed.Milliseconds())
 
 	switch {
 	case scan.CriticalCount > 0:

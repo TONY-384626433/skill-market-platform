@@ -1479,3 +1479,21 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .sec-upload .ant-upload-drag:hover { border-color: rgba(78,226,255,.6); }
 .sec-upload-title { margin: 0 0 4px; font-size: 15px; font-weight: 600; color: #eaf4ff; }
 .sec-upload-title .anticon { color: #4ee2ff; margin-right: 6px; }
+
+/* 动态沙箱行为验证 */
+.sec-sandbox { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid #1d344f; border-left: 3px solid #4ee2ff; border-radius: 8px; background: rgba(8,18,32,.7); }
+.sec-sandbox-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.sec-sandbox-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: #eaf4ff; }
+.sec-sandbox-title .anticon { color: #4ee2ff; }
+.sec-sandbox-events { display: flex; flex-wrap: wrap; gap: 8px; }
+.sec-sandbox-event { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid #1d344f; border-radius: 999px; background: rgba(13,26,44,.8); font-size: 12px; }
+.sec-sandbox-event code { color: #9fb6cd; }
+.sec-sandbox-event small { color: #7f93ab; }
+.sec-sandbox-event b { color: #4ee2ff; }
+.sec-sandbox-checks { display: flex; flex-direction: column; gap: 6px; }
+.sec-sandbox-check { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: #d8e6f5; }
+.sec-sandbox-check code { color: #b98cff; }
+.sec-sandbox-diff { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.sec-sandbox-io summary { cursor: pointer; color: #7f93ab; font-size: 12px; }
+.sec-sandbox-io pre { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: #060d18; color: #9fe8c8; font-size: 12px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
+.sec-sandbox-io pre.sec-stderr { color: #ffb1c1; }

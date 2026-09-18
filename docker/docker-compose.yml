@@ -118,6 +118,55 @@ services:
       - "8081:8081"
     restart: unless-stopped
 
+  # ==================== 技能动态沙箱 (行为验证) ====================
+  # 隔离基线: 网络只在内部网络(无外网出口) / 根文件系统只读 / 非 root /
+  #           丢弃全部 capability / 进程数与内存上限, 只留必要的 tmpfs 可写区。
+  # 用途: 把待审技能真跑一次, 观测是否外联/执行命令/越权写文件/窃取凭据/写持久化。
+  sandbox:
+    build: ../sandbox
+    container_name: skillhub-sandbox
+    networks:
+      - sandbox_net
+    read_only: true
+    tmpfs:
+      - /work:rw,size=256m,mode=1777
+      - /tmp:rw,size=64m,mode=1777
+      - /run:rw,size=16m,mode=1777
+    user: "65534:65534"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 128
+    cpus: 1.0
+    restart: unless-stopped
+
+  # ==================== 沙箱网关 (TCP 转发, 只跑转发代码) ====================
+  # Docker Desktop 下 internal 网络不发布端口, 故用网关联通: 宿主 -> 网关 -> 沙箱(无外网)
+  sandbox-gw:
+    build: ../sandbox
+    container_name: skillhub-sandbox-gw
+    command: ["python", "/app/tcp_proxy.py"]
+    environment:
+      PROXY_PORT: "8090"
+      PROXY_TARGET_HOST: sandbox
+      PROXY_TARGET_PORT: "8090"
+    ports:
+      - "8090:8090"
+    networks:
+      - sandbox_net
+      - default
+    depends_on:
+      - sandbox
+    restart: unless-stopped
+
+networks:
+  # internal: true —— 沙箱所属网络无外网出口, 容器内任何外联都不可达
+  sandbox_net:
+    name: skillhub_sandbox_net
+    internal: true
+
 volumes:
   postgres_data:
   redis_data:

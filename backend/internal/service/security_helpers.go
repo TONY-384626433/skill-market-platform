@@ -25,6 +25,7 @@ func SecurityRuleDocs() []model.SecurityRuleDoc { return sec.Rules() }
 func SecurityEngineMeta() map[string]interface{} {
 	meta := sec.RulesMeta()
 	meta["version"] = sec.EngineVersion()
+	meta["dynamic_sandbox"] = SandboxEngineMeta()
 	return meta
 }
 
@@ -46,6 +47,12 @@ func SecurityPolicy() map[string]interface{} {
 		"install": map[string]interface{}{
 			"require_signed_manifest": true,
 			"description":             "交付包必须携带 HMAC-SHA256 签名清单, 验签失败不可安装",
+		},
+		"dynamic_sandbox": map[string]interface{}{
+			"mode":        "behaviour_verification",
+			"description": "可执行技能在隔离容器(无外网/只读根/非 root/cap-drop ALL/限额)中真跑一次, 观测外联、命令执行、越权写文件、凭据读取、持久化",
+			"rules":       "DYN-01 ~ DYN-08",
+			"api":         SandboxEngineMeta(),
 		},
 		"provenance": map[string]interface{}{
 			"watermark":   "每个技能与每次交付均带唯一水印, 泄漏可追溯到下载人",

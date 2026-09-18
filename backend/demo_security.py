@@ -6,7 +6,8 @@
   1. 安全引擎与策略 (规则库 / 病毒库 / 签名密钥指纹)
   2. 内部技能静态查毒
   3. 上传技能包安全预检: 正常包 -> 放行; 恶意包 -> 阻断并列出命中规则; 路径穿越包 -> 拦截
-  4. GitHub 导入门禁: 未审核直接下载 -> 403 拒绝
+  4. 动态沙箱: 可执行技能在隔离容器(无外网/只读根/非root)真跑一次, 观测外联/命令执行/窃密/持久化
+  5. GitHub 导入门禁: 未审核直接下载 -> 403 拒绝
 """
 
 import json
@@ -103,14 +104,38 @@ def main():
                 missing = [rid for rid in samples.EXPECTED_RULES if rid not in hit_ids]
                 print('            关键规则覆盖: %s' % ('全部命中' if not missing else '缺少 ' + ','.join(missing)))
 
-    print('[5] GitHub 导入门禁 (先审核, 后下载)')
+    print('[5] 动态沙箱验证 (静态查毒之外的第二道防线)')
+    sbx = engine.get('dynamic_sandbox', {})
+    print('    引擎    : %s  地址 %s  可用=%s' % (sbx.get('engine'), sbx.get('url'), sbx.get('reachable')))
+    if not sbx.get('reachable'):
+        print('    提示    : %s' % (sbx.get('notice') or '沙箱未就绪, 仅做静态扫描'))
+    else:
+        iso = sbx.get('isolated') or {}
+        print('    隔离自检: 无外网可达=%s  只读根=%s  非root(uid)=%s  capabilities=%s' % (
+            iso.get('network_reachable') is False, iso.get('rootfs_read_only'), iso.get('uid'), iso.get('cap_eff')))
+    for label, payload, _ in (('正常可执行包', samples.runtime_benign_zip(), 'runtime-ok.zip'),
+                              ('行为型样本', samples.runtime_probe_zip(), 'runtime-probe.zip')):
+        st, out = call('POST', '/admin/security/scan-package', auth=admin, form=('file', payload))
+        scan = out.get('data', {})
+        sb = scan.get('sandbox') or {}
+        ev = sb.get('events') or {}
+        observed = ' '.join('%s=%s' % (k, v) for k, v in ev.items() if v) or '无'
+        print('    %-6s -> %-9s 沙箱=%-9s 已执行=%-5s 行为事件=%s' % (
+            label, scan.get('verdict_cn') or scan.get('verdict'), sb.get('status'), sb.get('executed'), observed))
+        hits = [f['rule_id'] for f in (scan.get('findings') or []) if str(f.get('rule_id', '')).startswith('DYN-')]
+        if hits:
+            print('             动态命中: %s' % ', '.join(hits))
+            missing = [rid for rid in samples.EXPECTED_DYN_RULES if rid not in hits]
+            print('             动态规则覆盖: %s' % ('全部命中' if not missing else '缺少 ' + ','.join(missing)))
+
+    print('[6] GitHub 导入门禁 (先审核, 后下载)')
     st, res = call('GET', '/github/skills/download?repo=DenisSergeevitch/repo-task-proof-loop&ref=main&path=SKILL.md',
                    auth=admin)
     print('    未审核直接下载 -> HTTP %s / gate=%s' % (st, res.get('gate')))
     print('    拒绝原因: %s' % res.get('error'))
 
     line('=')
-    print('演示结束: 恶意/穿越包已阻断, 正常包放行, 未审核的外部技能禁止下载。')
+    print('演示结束: 恶意/穿越包已阻断, 正常包放行, 动态沙箱真实复现危险行为, 未审核的外部技能禁止下载。')
     line('=')
     return 0
 

@@ -31,6 +31,7 @@ type SecurityService struct {
 	autoApprove     bool
 	blockOnCritical bool
 	simThreshold    float64
+	sandbox         *SandboxClient
 }
 
 // NewSecurityService 构建服务
@@ -51,6 +52,7 @@ func NewSecurityService(db *sql.DB) *SecurityService {
 		autoApprove:     auto == "" || auto == "1" || strings.EqualFold(auto, "true"),
 		blockOnCritical: true,
 		simThreshold:    0.75,
+		sandbox:         NewSandboxClient(),
 	}
 }
 
@@ -176,6 +178,17 @@ func (s *SecurityService) runScan(ctx context.Context, subject sec.ScanSubject, 
 			report.MatchedName, report.Similarity*100, scan.Summary)
 	}
 
+	// 动态沙箱验证 (静态查毒之外的第二道): 在无外网/只读根/非 root 的隔离容器里
+	// 真跑一次, 观测是否外联、执行命令、越权写文件、窃取凭据、写持久化项。
+	if s.sandbox.Enabled() {
+		if report := s.sandbox.Verify(ctx, subject.SkillKey, files); report != nil {
+			scan.Sandbox = report
+			if len(report.Findings) > 0 {
+				sec.MergeFindings(scan, report.Findings)
+			}
+		}
+	}
+
 	if err := s.persistScan(ctx, scan); err != nil {
 		return nil, err
 	}
@@ -224,17 +237,23 @@ func (s *SecurityService) detectReupload(ctx context.Context, files []model.Skil
 func (s *SecurityService) persistScan(ctx context.Context, scan *model.SecurityScan) error {
 	findings, _ := json.Marshal(scan.Findings)
 	reupload, _ := json.Marshal(scan.Reupload)
+	sandbox := sql.NullString{}
+	if scan.Sandbox != nil {
+		if raw, err := json.Marshal(scan.Sandbox); err == nil {
+			sandbox = sql.NullString{String: string(raw), Valid: true}
+		}
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO skill_security_scans (id, subject_type, skill_id, skill_key, skill_name, version, target,
 			verdict, verdict_cn, risk_score, grade, findings, finding_count, critical_count, high_count,
 			files_scanned, bytes_scanned, duration_ms, engine_version, content_hash, sim_hash, trigger_type,
-			triggered_by, summary, reupload, reupload_suspected)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+			triggered_by, summary, reupload, reupload_suspected, sandbox)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
 		scan.ID, scan.SubjectType, nullIfEmpty(scan.SkillID), nullIfEmpty(scan.SkillKey), nullIfEmpty(scan.SkillName),
 		nullIfEmpty(scan.Version), nullIfEmpty(scan.Target), scan.Verdict, scan.VerdictCN, scan.RiskScore, scan.Grade,
 		string(findings), scan.FindingCount, scan.CriticalCount, scan.HighCount, scan.FilesScanned, scan.BytesScanned,
 		scan.DurationMs, scan.EngineVersion, scan.ContentHash, scan.SimHashHex, scan.TriggerType,
-		nullIfEmpty(scan.TriggeredBy), scan.Summary, string(reupload), scan.ReuploadSuspected)
+		nullIfEmpty(scan.TriggeredBy), scan.Summary, string(reupload), scan.ReuploadSuspected, sandbox)
 	return err
 }
 
@@ -257,20 +276,26 @@ func (s *SecurityService) applySkillSecurityState(ctx context.Context, skillID s
 // ScanByID 查询单次扫描
 func (s *SecurityService) ScanByID(ctx context.Context, scanID string) (*model.SecurityScan, error) {
 	scan := &model.SecurityScan{}
-	var findings, reupload sql.NullString
+	var findings, reupload, sandbox sql.NullString
 	var skillID, skillKey, skillName, version, target, triggerBy sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, subject_type, skill_id, skill_key, skill_name, version, target, verdict, verdict_cn,
 		       risk_score, grade, findings, finding_count, critical_count, high_count, files_scanned,
 		       bytes_scanned, duration_ms, engine_version, content_hash, trigger_type, triggered_by,
-		       summary, created_at, reupload
+		       summary, created_at, reupload, sandbox
 		FROM skill_security_scans WHERE id=$1`, scanID).
 		Scan(&scan.ID, &scan.SubjectType, &skillID, &skillKey, &skillName, &version, &target, &scan.Verdict,
 			&scan.VerdictCN, &scan.RiskScore, &scan.Grade, &findings, &scan.FindingCount, &scan.CriticalCount,
 			&scan.HighCount, &scan.FilesScanned, &scan.BytesScanned, &scan.DurationMs, &scan.EngineVersion,
-			&scan.ContentHash, &scan.TriggerType, &triggerBy, &scan.Summary, &scan.CreatedAt, &reupload)
+			&scan.ContentHash, &scan.TriggerType, &triggerBy, &scan.Summary, &scan.CreatedAt, &reupload, &sandbox)
 	if err != nil {
 		return nil, err
+	}
+	if sandbox.Valid && sandbox.String != "" {
+		var sb model.SandboxReport
+		if json.Unmarshal([]byte(sandbox.String), &sb) == nil {
+			scan.Sandbox = &sb
+		}
 	}
 	scan.SkillID, scan.SkillKey, scan.SkillName = skillID.String, skillKey.String, skillName.String
 	scan.Version, scan.Target, scan.TriggeredBy = version.String, target.String, triggerBy.String

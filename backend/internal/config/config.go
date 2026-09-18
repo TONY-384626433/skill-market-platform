@@ -1,7 +1,9 @@
 package config
 
 import (
+	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -84,11 +86,11 @@ func Load() *Config {
 		},
 		LLM: LLMConfig{
 			APIBase: getEnv("LLM_API_BASE", "http://localhost:8080/v1"),
-			APIKey:  getEnv("LLM_API_KEY", ""),
+			APIKey:  getEnvWithFile("LLM_API_KEY", "LLM_API_KEY_FILE"),
 			Model:   getEnv("LLM_MODEL", "deepseek-v3"),
 		},
 		GitHub: GitHubConfig{
-			Token:    getEnv("GITHUB_TOKEN", ""),
+			Token:    getEnvWithFile("GITHUB_TOKEN", "GITHUB_TOKEN_FILE"),
 			APIBase:  getEnv("GITHUB_API_URL", "https://api.github.com"),
 			CacheTTL: getEnvDuration("GITHUB_CACHE_TTL", 30*time.Minute),
 		},
@@ -109,4 +111,22 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 		}
 	}
 	return defaultVal
+}
+
+// getEnvWithFile 密钥类配置: 优先环境变量, 其次从「挂载文件」读取
+// (银行环境推荐用 KMS/密钥管理挂载文件, 避免密钥出现在环境变量与进程命令行里)
+func getEnvWithFile(valueEnv, fileEnv string) string {
+	if v := strings.TrimSpace(os.Getenv(valueEnv)); v != "" {
+		return v
+	}
+	path := strings.TrimSpace(os.Getenv(fileEnv))
+	if path == "" {
+		return ""
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("[config] 读取密钥文件失败 (%s): %v", path, err)
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }

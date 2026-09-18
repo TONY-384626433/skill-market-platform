@@ -50,6 +50,8 @@ var securitySchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_sec_scans_skill ON skill_security_scans(skill_id, created_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_sec_scans_created ON skill_security_scans(created_at DESC)`,
 	`CREATE INDEX IF NOT EXISTS idx_sec_scans_verdict ON skill_security_scans(verdict)`,
+	// 动态沙箱行为验证报告 (后续版本新增, 幂等补齐)
+	`ALTER TABLE skill_security_scans ADD COLUMN IF NOT EXISTS sandbox JSONB`,
 
 	// ---------- 溯源档案 (防盗用) ----------
 	`CREATE TABLE IF NOT EXISTS skill_provenance (

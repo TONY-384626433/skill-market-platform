@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, App as AntApp, Button, Descriptions, Drawer, Empty, Segmented, Skeleton, Space, Statistic, Table, Tabs, Tag, Tooltip, Upload } from 'antd';
 import {
-  BugOutlined, CheckOutlined, CloseOutlined, CloudDownloadOutlined, FileProtectOutlined,
+  BugOutlined, CheckOutlined, CloseOutlined, CloudDownloadOutlined, ExperimentOutlined, FileProtectOutlined,
   GithubOutlined, InboxOutlined, ReloadOutlined, SafetyCertificateOutlined, ScanOutlined,
   SecurityScanOutlined, WarningOutlined,
 } from '@ant-design/icons';
@@ -49,6 +49,108 @@ function StatusTag({ status }) {
 function SeverityTag({ severity }) {
   const meta = SEVERITY_META[severity] || { color: 'default', text: severity };
   return <Tag color={meta.color}>{meta.text}</Tag>;
+}
+
+const SANDBOX_STATUS_META = {
+  ok: { color: 'success', text: '已真实验证' },
+  skipped: { color: 'default', text: '已跳过' },
+  unreachable: { color: 'warning', text: '沙箱不可达' },
+  error: { color: 'error', text: '验证出错' },
+};
+
+const CHECK_STATUS_META = {
+  passed: { color: 'success', text: '通过' },
+  failed: { color: 'error', text: '未通过' },
+  warning: { color: 'warning', text: '告警' },
+  skipped: { color: 'default', text: '跳过' },
+};
+
+const DYN_EVENT_CN = {
+  network_connect: '外联连接',
+  network_dns: '域名解析',
+  socket_bind: '监听端口',
+  subprocess: '子进程执行',
+  shell_command: 'Shell 命令',
+  file_write: '写文件',
+  file_write_outside: '越权写文件',
+  sensitive_read: '读敏感凭据',
+  file_delete: '删除文件',
+  persistence: '写入持久化项',
+  import_module: '动态加载模块',
+};
+
+function SandboxPanel({ sandbox }) {
+  if (!sandbox) return null;
+  const meta = SANDBOX_STATUS_META[sandbox.status] || SANDBOX_STATUS_META.skipped;
+  const iso = sandbox.isolated || {};
+  const events = sandbox.events || {};
+  const checks = sandbox.checks || [];
+  const diff = sandbox.filesystem_diff || null;
+  const diffRows = diff
+    ? Object.entries(diff).map(([k, v]) => ({ key: k, kind: k, files: v || [] })).filter((r) => r.files.length > 0)
+    : [];
+  return (
+    <div className="sec-sandbox">
+      <div className="sec-sandbox-head">
+        <span className="sec-sandbox-title"><ExperimentOutlined /> 动态沙箱行为验证</span>
+        <Space size={4} wrap>
+          <Tag color={meta.color}>{meta.text}</Tag>
+          {iso.network_reachable === false && <Tooltip title="沙箱无外网可达"><Tag color="cyan">隔离 · 无外网</Tag></Tooltip>}
+          {iso.rootfs_read_only && <Tag color="cyan">只读根文件系统</Tag>}
+          {iso.uid !== undefined && <Tag color="cyan">非 root(uid {iso.uid})</Tag>}
+          {iso.cap_eff === '0000000000000000' && <Tag color="cyan">能力已清空</Tag>}
+        </Space>
+      </div>
+      {sandbox.notice && <Alert type="info" showIcon className="sec-alert" message={sandbox.notice} />}
+      <Descriptions size="small" column={2} bordered>
+        <Descriptions.Item label="引擎">{sandbox.engine || '-'}</Descriptions.Item>
+        <Descriptions.Item label="运行号"><code>{sandbox.run_id || '-'}</code></Descriptions.Item>
+        <Descriptions.Item label="入口">{sandbox.entry || '-'}</Descriptions.Item>
+        <Descriptions.Item label="退出码">{sandbox.executed ? (sandbox.exit_code ?? '-') : '未执行'}</Descriptions.Item>
+        <Descriptions.Item label="耗时">{sandbox.duration_ms ?? 0} ms</Descriptions.Item>
+        <Descriptions.Item label="行为事件">{sandbox.trace_lines ?? 0} 条</Descriptions.Item>
+      </Descriptions>
+      {Object.keys(events).length > 0 && (
+        <div className="sec-sandbox-events">
+          {Object.entries(events).map(([k, v]) => (
+            <span key={k} className="sec-sandbox-event"><code>{k}</code>{DYN_EVENT_CN[k] ? <small>{DYN_EVENT_CN[k]}</small> : null}<b>{v}</b></span>
+          ))}
+        </div>
+      )}
+      {checks.length > 0 && (
+        <div className="sec-sandbox-checks">
+          {checks.map((c, i) => {
+            const cm = CHECK_STATUS_META[c.status] || CHECK_STATUS_META.skipped;
+            return (
+              <div key={i} className="sec-sandbox-check">
+                <Tag color={cm.color}>{cm.text}</Tag>
+                <code>{c.rule_id}</code>
+                <strong>{c.name}</strong>
+                <span className="sec-muted">{c.detail}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {diffRows.length > 0 && (
+        <div className="sec-sandbox-diff">
+          {diffRows.map((r) => (
+            <div key={r.kind}>
+              <Tag color="orange">{r.kind}</Tag>
+              <span className="sec-muted">{r.files.join('、')}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {(sandbox.stdout_tail || sandbox.stderr_tail) && (
+        <details className="sec-sandbox-io">
+          <summary>运行输出（尾部）</summary>
+          {sandbox.stdout_tail && <pre>{sandbox.stdout_tail}</pre>}
+          {sandbox.stderr_tail && <pre className="sec-stderr">{sandbox.stderr_tail}</pre>}
+        </details>
+      )}
+    </div>
+  );
 }
 
 export default function SecurityPage() {
@@ -208,6 +310,13 @@ export default function SecurityPage() {
             <Tag color={stats.auto_approve ? 'green' : 'orange'}>{stats.auto_approve ? '安全即自动放行' : '全部人工审批'}</Tag>
             <Tag color="red">高危一律阻断</Tag>
             <Tag color="purple">HMAC-SHA256 包签名</Tag>
+            {engine.dynamic_sandbox && (
+              <Tooltip title={engine.dynamic_sandbox.notice || `沙箱地址 ${engine.dynamic_sandbox.url || '-'}`}>
+                <Tag color={engine.dynamic_sandbox.reachable ? 'green' : 'default'} icon={<ExperimentOutlined />}>
+                  动态沙箱{engine.dynamic_sandbox.reachable ? '在线' : '未接入'}
+                </Tag>
+              </Tooltip>
+            )}
             {engine.source && <Tooltip title={engine.source}><Tag>规则库: {String(engine.source).split(/[\\/]/).pop()}</Tag></Tooltip>}
           </div>
         </div>
@@ -320,6 +429,7 @@ export default function SecurityPage() {
                 message="查重命中：疑似复制他人技能"
                 description={`与「${report.reupload.matched_skill_name}」相似度 ${(report.reupload.similarity * 100).toFixed(0)}% — ${report.reupload.reason}`} />
             )}
+            <SandboxPanel sandbox={report.sandbox} />
             {(report.findings || []).length === 0
               ? <Empty description="未发现风险项" />
               : (

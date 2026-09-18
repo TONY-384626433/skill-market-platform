@@ -30,11 +30,11 @@ if ($LASTEXITCODE -ne 0) {
 } else {
     Push-Location "$ROOT\docker"
     # 只拉起演示必需的服务, 避免 compose 去 pull es/vault/rabbitmq 等未缓存镜像 (离线/网络受限时会整体失败)
-    docker compose up -d --no-build postgres redis minio skill-runner 2>&1 | Out-Null
+    docker compose up -d --no-build postgres redis minio skill-runner sandbox sandbox-gw 2>&1 | Out-Null
     Pop-Location
     # 兜底: compose 失败 (例如 Docker 刚重启/镜像未缓存) 时, 直接重启已存在的容器
     $needStart = @()
-    foreach ($c in @("skillhub-postgres", "skillhub-redis", "skillhub-minio", "skillhub-runner")) {
+    foreach ($c in @("skillhub-postgres", "skillhub-redis", "skillhub-minio", "skillhub-runner", "skillhub-sandbox", "skillhub-sandbox-gw")) {
         $st = docker ps -a --filter "name=$c" --format "{{.Names}}:{{.Status}}" 2>$null
         if ($st -match "Exited|Created") { $needStart += $c }
     }
@@ -49,6 +49,20 @@ if ($LASTEXITCODE -ne 0) {
     $pg = docker ps --filter "name=skillhub-postgres" --format "{{.Names}}" 2>$null
     if ($pg) { Write-Host "  ✓ 数据库运行中: $pg" -ForegroundColor Green }
     else { Write-Host "  ✗ 数据库未启动! 后端将无法连接 5432" -ForegroundColor Red }
+
+    # 动态沙箱 (8090): 镜像未构建时自动构建 (静态查毒之外的第二道防线)
+    $sbx = docker ps --filter "name=skillhub-sandbox-gw" --format "{{.Names}}" 2>$null
+    if (-not $sbx) {
+        Write-Host "  ... 构建动态沙箱镜像" -ForegroundColor Yellow
+        Push-Location "$ROOT\docker"
+        docker compose build sandbox sandbox-gw 2>&1 | Out-Null
+        docker compose up -d --no-build sandbox sandbox-gw 2>&1 | Out-Null
+        Pop-Location
+        Start-Sleep 5
+        $sbx = docker ps --filter "name=skillhub-sandbox-gw" --format "{{.Names}}" 2>$null
+    }
+    if ($sbx) { Write-Host "  ✓ 动态沙箱运行中: $sbx (端口 8090)" -ForegroundColor Green }
+    else { Write-Host "  ⚠ 动态沙箱未就绪 (后端会自动降级为仅静态扫描)" -ForegroundColor Yellow }
 
     # 等 Postgres 真正就绪 (健康检查), 否则后端启动时 Ping 失败直接退出
     for ($i = 0; $i -lt 20; $i++) {
@@ -75,9 +89,16 @@ if (Test-Port 8080) {
             }
         }
     }
+    # 动态沙箱验证 (第二道防线): 后端把可执行技能送进隔离容器真跑一次
+    $previousSandboxEnv = $env:SKILLHUB_DYNAMIC_SANDBOX
+    $previousSandboxUrl = $env:SKILLHUB_SANDBOX_URL
+    if (-not $env:SKILLHUB_DYNAMIC_SANDBOX) { $env:SKILLHUB_DYNAMIC_SANDBOX = "1" }
+    if (-not $env:SKILLHUB_SANDBOX_URL) { $env:SKILLHUB_SANDBOX_URL = "http://localhost:8090" }
     Start-Process -FilePath "$ROOT\backend\skill-market-backend.exe" -WorkingDirectory "$ROOT\backend" -WindowStyle Hidden
     if ($previousGitHubToken) { $env:GITHUB_TOKEN = $previousGitHubToken }
     elseif (Test-Path Env:GITHUB_TOKEN) { Remove-Item Env:GITHUB_TOKEN }
+    if ($previousSandboxEnv) { $env:SKILLHUB_DYNAMIC_SANDBOX = $previousSandboxEnv } else { Remove-Item Env:SKILLHUB_DYNAMIC_SANDBOX -ErrorAction SilentlyContinue }
+    if ($previousSandboxUrl) { $env:SKILLHUB_SANDBOX_URL = $previousSandboxUrl } else { Remove-Item Env:SKILLHUB_SANDBOX_URL -ErrorAction SilentlyContinue }
     Start-Sleep 3
     if (Test-Port 8080) { Write-Host "  ✓ 后端启动成功 (8080)" -ForegroundColor Green }
     else { Write-Host "  ✗ 后端启动失败! 检查 backend\skill-market-backend.exe" -ForegroundColor Red }

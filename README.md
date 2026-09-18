@@ -197,11 +197,11 @@ cd frontend && npm run build
 
 ## 技能安全治理 (供应链安全 · 可落地银行内网)
 
-面向「技能能不能进银行」的三道闸门：**查毒、防盗用、先审后下**。
+面向「技能能不能进银行」的四道闸门：**静态查毒、动态沙箱、防盗用、先审后下**。
 
 ### 1. 静态安全扫描 (查毒 / 危险行为 / 提示注入)
 
-- 规则库外置为数据文件 `backend/rules/security-rules.json`（36 条规则 / 11 个分类），**不编入二进制**：
+- 规则库外置为数据文件 `backend/rules/security-rules.json`（44 条规则 / 12 个分类，含 `DYN-01~08` 动态行为规则），**不编入二进制**：
   可独立升级、回滚、审计，同时避免病毒特征串被编入可执行文件导致引擎自身被杀软误报隔离（实测会触发）。
 - 未装载规则库时后端**拒绝启动**（fail-closed），不会出现「无规则放行」。
 - 分类覆盖：`malware`(病毒/挖矿/勒索/EICAR)、`execution`(命令执行/eval)、`obfuscation`(Base64 载荷)、
@@ -247,11 +247,14 @@ cd frontend && npm run build
 ### 验收脚本
 
 ```bash
-# 引擎单测 (10 项: 安全技能/恶意样本/路径穿越/幻觉一致性/零宽注入/指纹查重/签名篡改/水印/规则库/fail-closed)
-go test ./internal/security/
+# 引擎单测 (30 项: 安全技能/恶意样本/路径穿越/幻觉一致性/零宽注入/指纹查重/签名篡改/水印/规则库/fail-closed/沙箱规则/沙箱客户端)
+go test ./internal/security/ ./internal/service/
 
-# 端到端 (27 项: 规则库→内部扫描→徽章→溯源→篡改检测→门禁 403→审查放行→签名复核→审计留痕→高危阻断)
+# 端到端 (35 项: 规则库→内部扫描→徽章→溯源→篡改检测→门禁 403→审查放行→签名复核→审计留痕→高危阻断→上传预检)
 python backend/e2e_security_test.py
+
+# 动态沙箱端到端 (22 项: 隔离自检 → DYN 规则 → 内部技能真跑不误伤 → 正常包放行 → 行为型样本命中 DYN-01/02/04/06/08 → 阻断 → 报告可回读取证)
+python backend/e2e_sandbox_test.py
 ```
 
 ### 环境变量
@@ -262,6 +265,9 @@ python backend/e2e_security_test.py
 | `SKILLHUB_SIGNING_KEY` | 内置演示密钥 | 包签名/水印密钥（生产必须由密钥管理注入） |
 | `IMPORT_AUTO_APPROVE` | `1` | 审查结论为 `safe` 时是否自动放行（`0`=全部人工审批） |
 | `SEED_SKILLS_DIR` | `../seed-skills` | 本地技能包目录（扫描对象） |
+| `SKILLHUB_DYNAMIC_SANDBOX` | `1` | 是否启用动态沙箱验证（`0`=仅静态扫描） |
+| `SKILLHUB_SANDBOX_URL` | `http://localhost:8090` | 沙箱服务地址 |
+| `SKILLHUB_SANDBOX_TIMEOUT` | `60s` | 单次动态验证超时 |
 
 ### 4. 上传包安全预检（入库前第一道闸门）
 
@@ -285,6 +291,24 @@ curl -F "file=@skill.zip" -H "Authorization: Bearer <admin-token>" \
 - 解析顺序：`SKILLHUB_SIGNING_KEY_FILE`（推荐，对接 KMS/密钥管理挂载）> `SKILLHUB_SIGNING_KEY` > 内置演示密钥；
 - `SKILLHUB_ENV=production`（或 `prod`/`bank`）时若仍使用内置演示密钥 → **后端拒绝启动**；
 - 对外只公开密钥指纹 `key_id`（如 `kid_4f3339f8`），写入签名清单并参与签名载荷，可审计「签发所用密钥版本」，换密钥后旧签名自动失效。
+
+### 7. 动态沙箱行为验证（静态查毒之外的第二道防线）
+
+静态扫描能看出「代码里想干什么」，动态沙箱则验证「跑起来究竟干了什么」——可执行技能会在隔离容器里被**真跑一次**。
+
+```bash
+# 构建并启动沙箱（首次或代码变更后）
+docker compose -f docker/docker-compose.yml build sandbox sandbox-gw
+docker compose -f docker/docker-compose.yml up -d --no-build sandbox sandbox-gw
+curl http://localhost:8090/health   # 含隔离自检结果
+```
+
+- **隔离手段**：独立内网（`internal: true`，无外网可达）+ 只读根文件系统 + 非 root（uid 65534）+ `cap_drop: ALL` + `no-new-privileges` + 内存 512MB / 进程 128 / CPU 1.0 限额；
+- **行为观测**（不依赖 strace/LD_PRELOAD，离线可用）：Python 用 `sys.addaudithook`（`PYTHONPATH` 注入 `sitecustomize.py`），Node 用 `--require` 预加载钩子；
+- **规则**（`DYN-01 ~ DYN-08`）：外联尝试 / 系统命令执行 / 越权写文件 / 读取敏感凭据 / 监听端口 / 写持久化启动项 / 运行稳定性 / 删除文件；命中 `critical` 直接并入安全结论并标记**阻断级**（与静态规则同一套打分与门禁）；
+- **网络拓扑**：`skillhub-sandbox` 只连离线内网，`skillhub-sandbox-gw` 仅运行本项目的 TCP 转发代码，把 `host:8090` 桥接到沙箱（Docker Desktop 下 `internal` 网络不发布端口，故采用双容器拓扑）；
+- **报告**：隔离自检、行为事件、检查项、文件系统前后比对、运行输出尾部，随扫描记录**持久化**（`skill_security_scans.sandbox`），前端报告抽屉「动态沙箱行为验证」区块可回读取证；
+- **不误伤**：技能写自己的目录/临时文件、正常退出、非 MCP 脚本均不算风险；沙箱不可达时明确标注 `unreachable` 而非静默跳过。
 
 ### 一键演示（银行汇报用）
 

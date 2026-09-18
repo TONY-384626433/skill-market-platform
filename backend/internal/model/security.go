@@ -33,6 +33,38 @@ type SecurityFinding struct {
 	Score      int    `json:"score"`              // 该发现扣分
 }
 
+// SandboxCheck 沙箱单项检查
+type SandboxCheck struct {
+	RuleID string `json:"rule_id"`
+	Name   string `json:"name"`
+	Status string `json:"status"` // passed / failed / warning / skipped
+	Detail string `json:"detail"`
+}
+
+// SandboxReport 动态沙箱行为验证报告
+type SandboxReport struct {
+	Engine         string                 `json:"engine"`
+	Status         string                 `json:"status"` // ok / skipped / unreachable / error
+	Notice         string                 `json:"notice,omitempty"`
+	RunID          string                 `json:"run_id,omitempty"`
+	Entry          string                 `json:"entry,omitempty"`
+	Executed       bool                   `json:"executed"`
+	ExitCode       *int                   `json:"exit_code,omitempty"`
+	DurationMs     int                    `json:"duration_ms"`
+	VerdictHint    string                 `json:"verdict_hint,omitempty"`
+	CriticalCount  int                    `json:"critical_count,omitempty"`
+	HighCount      int                    `json:"high_count,omitempty"`
+	TraceLines     int                    `json:"trace_lines,omitempty"`
+	Isolated       map[string]interface{} `json:"isolated,omitempty"`
+	Events         map[string]int         `json:"events,omitempty"`
+	MCP            map[string]interface{} `json:"mcp,omitempty"`
+	Checks         []SandboxCheck         `json:"checks,omitempty"`
+	Findings       []SecurityFinding      `json:"findings,omitempty"`
+	FilesystemDiff map[string][]string    `json:"filesystem_diff,omitempty"`
+	StdoutTail     string                 `json:"stdout_tail,omitempty"`
+	StderrTail     string                 `json:"stderr_tail,omitempty"`
+}
+
 // AVEngine 外部查毒引擎状态 (ClamAV / YARA)
 type AVEngine struct {
 	Engine    string `json:"engine"`
@@ -74,6 +106,7 @@ type SecurityScan struct {
 	TriggeredName  string            `json:"triggered_by_name,omitempty"`
 	Summary        string            `json:"summary"`
 	AVEngines      []AVEngine        `json:"av_engines,omitempty"`
+	Sandbox        *SandboxReport    `json:"sandbox,omitempty"`
 	KeyID          string            `json:"key_id,omitempty"`
 	CreatedAt      time.Time         `json:"created_at"`
 	// 查重 (防盗用)
