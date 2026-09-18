@@ -99,7 +99,7 @@ def main():
         hit_ids = [f['rule_id'] for f in (scan.get('findings') or [])]
         if hits:
             print('            命中: %s' % ', '.join(hits[:12]))
-            if 'malicious' in str(scan.get('verdict')):
+            if label == '恶意包':
                 missing = [rid for rid in samples.EXPECTED_RULES if rid not in hit_ids]
                 print('            关键规则覆盖: %s' % ('全部命中' if not missing else '缺少 ' + ','.join(missing)))
 
