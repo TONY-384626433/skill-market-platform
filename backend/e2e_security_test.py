@@ -284,6 +284,8 @@ def main():
         check('审查失败不允许人工放行', st == 400, dec3.get('error'))
         st, re3, _ = call('POST', '/admin/import-requests/%s/scan' % fid, token=admin)
         check('审查失败可一键重试 (不卡死)', st == 200, (re3.get('status') if isinstance(re3, dict) else re3))
+        # 清理本次测试产生的 ghost 审查单, 不污染演示队列
+        psql("DELETE FROM github_import_requests WHERE repository='%s'" % ghost_repo)
 
     st, overview, _ = call('GET', '/admin/security-overview', token=admin)
     check('安全治理概览', st == 200 and overview.get('total_scans', 0) >= 4,
