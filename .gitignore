@@ -41,3 +41,5 @@ venv/
 backend/data/
 data/
 .commitmsg.tmp
+*.exe~
+*~
