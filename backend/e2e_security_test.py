@@ -265,6 +265,26 @@ def main():
         st, dec2, _ = call('POST', '/admin/import-requests/%s/decision' % blocked_id, {'approve': True}, token=admin)
         check('被阻断的审查单不允许人工放行', st == 400, dec2.get('error'))
 
+    # ---------- 6b. 审查失败(未完成扫描) 不得冒充安全结论 ----------
+    ghost_repo = 'skillhub-definitely-not-exists/repo-xyz'
+    st, sub3, _ = call('POST', '/github/import-requests',
+                       {'repository': ghost_repo, 'ref': 'main', 'path': 'SKILL.md'}, token=admin)
+    failed = sub3.get('data') or {} if isinstance(sub3.get('data'), dict) else {}
+    fid = failed.get('id')
+    if fid:
+        st, det3, _ = call('GET', '/admin/import-requests/%s' % fid, token=admin)
+        d3 = det3.get('data', det3)
+        check('审查失败 -> 状态 scan_failed (不冒充已阻断)', d3.get('status') == 'scan_failed', d3.get('status'))
+        check('审查失败 -> 无扫描记录且风险归零', not d3.get('scan_id') and (d3.get('risk_score') or 0) == 0,
+              'risk=%s scan_id=%s' % (d3.get('risk_score'), d3.get('scan_id')))
+        st, res3, _ = call('GET', '/github/skills/download?repo=%s&ref=main&path=SKILL.md&request_id=%s' % (ghost_repo, fid),
+                           token=admin)
+        check('审查失败不可下载 (提示重试)', st == 403 and '审查' in json.dumps(res3, ensure_ascii=False), res3.get('error'))
+        st, dec3, _ = call('POST', '/admin/import-requests/%s/decision' % fid, {'approve': True}, token=admin)
+        check('审查失败不允许人工放行', st == 400, dec3.get('error'))
+        st, re3, _ = call('POST', '/admin/import-requests/%s/scan' % fid, token=admin)
+        check('审查失败可一键重试 (不卡死)', st == 200, (re3.get('status') if isinstance(re3, dict) else re3))
+
     st, overview, _ = call('GET', '/admin/security-overview', token=admin)
     check('安全治理概览', st == 200 and overview.get('total_scans', 0) >= 4,
           'scanned=%s safe=%s blocked=%s imports=%s downloads=%s' % (overview.get('scanned'), overview.get('safe'),

@@ -24,6 +24,7 @@ const STATUS_META = {
   pending_review: { color: 'warning', text: '待人工复核' },
   approved: { color: 'success', text: '已通过' },
   blocked: { color: 'error', text: '已阻断' },
+  scan_failed: { color: 'volcano', text: '审查失败(未完成扫描)' },
   rejected: { color: 'default', text: '已驳回' },
   imported: { color: 'cyan', text: '已入库' },
 };
@@ -526,6 +527,7 @@ export default function SecurityPage() {
                       { label: `已通过 ${imports.filter((i) => i.status === 'approved' || i.status === 'imported').length}`, value: 'approved' },
                       { label: `已阻断 ${imports.filter((i) => i.status === 'blocked').length}`, value: 'blocked' },
                       { label: `已驳回 ${imports.filter((i) => i.status === 'rejected').length}`, value: 'rejected' },
+                      { label: `审查失败 ${imports.filter((i) => i.status === 'scan_failed').length}`, value: 'scan_failed' },
                     ]}
                   />
                   <span className="sec-muted">外部技能必须先审查；已通过的包在下载时会注入签名清单与专属水印。</span>

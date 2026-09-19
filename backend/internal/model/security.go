@@ -275,6 +275,7 @@ type SecurityOverview struct {
 	ImportApproved      int64   `json:"import_approved"`
 	ImportRejected      int64   `json:"import_rejected"`
 	ImportBlocked       int64   `json:"import_blocked"`
+	ImportScanFailed    int64   `json:"import_scan_failed"`
 	ImportImported      int64   `json:"import_imported"`
 	TotalScans          int64   `json:"total_scans"`
 	AvgRisk             float64 `json:"avg_risk"`

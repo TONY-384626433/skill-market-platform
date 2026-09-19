@@ -425,7 +425,7 @@ func (s *SecurityService) Overview(ctx context.Context) (*model.SecurityOverview
 	}{
 		{"pending", &o.ImportPending}, {"scanning", &o.ImportPending}, {"pending_review", &o.ImportPendingReview},
 		{"blocked", &o.ImportBlocked}, {"approved", &o.ImportApproved}, {"rejected", &o.ImportRejected},
-		{"imported", &o.ImportImported},
+		{"imported", &o.ImportImported}, {"scan_failed", &o.ImportScanFailed},
 	} {
 		var n int64
 		_ = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM github_import_requests WHERE status=$1`, item.status).Scan(&n)
@@ -620,6 +620,13 @@ func (s *SecurityService) CreateImportRequest(ctx context.Context, repository, r
 	return req, nil
 }
 
+// markImportFailed 审查未完成 (抓包/扫描失败): 单独状态, 与「扫描后判定恶意」区分。
+// fail-closed: 不做放行, 但不冒充安全结论 (risk=0, 可重试)。
+func (s *SecurityService) markImportFailed(ctx context.Context, reqID, note string) {
+	_, _ = s.db.ExecContext(ctx, `UPDATE github_import_requests SET status='scan_failed', verdict='error',
+		risk_score=0, critical_count=0, review_note=$2, updated_at=NOW() WHERE id=$1`, reqID, note)
+}
+
 // ScanImportRequest 对审查单执行「审核」: 抓包 → 静态查毒 → 指纹查重 → 出结论
 func (s *SecurityService) ScanImportRequest(ctx context.Context, reqID string, github *GitHubService) (*model.ImportRequest, error) {
 	req, err := s.ImportRequest(ctx, reqID)
@@ -629,8 +636,7 @@ func (s *SecurityService) ScanImportRequest(ctx context.Context, reqID string, g
 	_, _ = s.db.ExecContext(ctx, `UPDATE github_import_requests SET status='scanning', updated_at=NOW() WHERE id=$1`, reqID)
 	files, err := github.FetchSkillFiles(ctx, req.Repository, req.Ref, req.SkillPath)
 	if err != nil {
-		_, _ = s.db.ExecContext(ctx, `UPDATE github_import_requests SET status='blocked', verdict='error', risk_score=100,
-			review_note=$2, updated_at=NOW() WHERE id=$1`, reqID, "审查失败: "+err.Error())
+		s.markImportFailed(ctx, reqID, "抓取技能包失败: "+err.Error())
 		return s.ImportRequest(ctx, reqID)
 	}
 	subject := sec.ScanSubject{Type: "import", SkillKey: req.SkillPath, SkillName: req.SkillName,
@@ -638,7 +644,8 @@ func (s *SecurityService) ScanImportRequest(ctx context.Context, reqID string, g
 		TriggerBy: req.RequestedBy, TriggerNam: req.RequestedName}
 	scan, err := s.runScan(ctx, subject, files)
 	if err != nil {
-		return nil, err
+		s.markImportFailed(ctx, reqID, "安全审查执行失败: "+err.Error())
+		return s.ImportRequest(ctx, reqID)
 	}
 
 	status := "approved"
@@ -705,6 +712,9 @@ func (s *SecurityService) DecideImport(ctx context.Context, reqID string, approv
 	}
 	if req.Status == "blocked" && approve {
 		return nil, fmt.Errorf("该审查单已被安全引擎阻断 (命中严重风险), 不允许人工放行")
+	}
+	if req.Status == "scan_failed" && approve {
+		return nil, fmt.Errorf("该审查单安全审查未完成 (抓取/扫描失败), 请先重试审查; 不允许在未扫描状态下放行")
 	}
 	if req.Status == "malicious" {
 		return nil, fmt.Errorf("高危技能不允许放行")
@@ -824,6 +834,8 @@ func (s *SecurityService) DownloadGate(ctx context.Context, requestID, repositor
 		return req, nil
 	case "blocked":
 		return nil, fmt.Errorf("安全审查已拦截该技能 (风险分 %d, 命中 %d 项严重风险), 禁止下载", req.RiskScore, req.CriticalCount)
+	case "scan_failed":
+		return nil, fmt.Errorf("该技能安全审查未完成 (抓取/扫描失败), 请重试审查后再下载")
 	case "pending_review":
 		return nil, fmt.Errorf("该技能审核结论为「待人工复核」, 请管理员在安全治理页审批后再下载")
 	case "rejected":
@@ -862,6 +874,8 @@ func importStatusCN(status string) string {
 		return "已通过"
 	case "blocked":
 		return "已阻断"
+	case "scan_failed":
+		return "审查失败(未完成扫描)"
 	case "rejected":
 		return "已驳回"
 	case "imported":
