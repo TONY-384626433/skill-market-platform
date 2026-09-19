@@ -118,6 +118,7 @@ export default function RecommendPage() {
   const navigate = useNavigate();
   const [text, setText] = useState('');
   const [source, setSource] = useState('all');
+  const [topN, setTopN] = useState(10);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState(null);
@@ -132,7 +133,7 @@ export default function RecommendPage() {
     setLoading(true);
     try {
       const useSource = src ?? source;
-      const opts = { top_n: 5, verify_security: true };
+      const opts = { top_n: topN, verify_security: true };
       if (useSource !== 'all') opts.sources = [useSource];
       const res = await recommendSkills(query, opts);
       const data = res?.data || res;
@@ -143,7 +144,7 @@ export default function RecommendPage() {
     } finally {
       setLoading(false);
     }
-  }, [message, source, text]);
+  }, [message, source, text, topN]);
 
   const submitReview = useCallback(async (item) => {
     setReviewing(item.skill_id);
@@ -175,6 +176,9 @@ export default function RecommendPage() {
             { label: '全部来源', value: 'all' },
             { label: <span><SafetyCertificateOutlined /> 企业库</span>, value: 'internal' },
             { label: <span><GithubOutlined /> GitHub</span>, value: 'github' },
+          ]} />
+          <Segmented value={topN} onChange={setTopN} options={[
+            { label: '推荐 6', value: 6 }, { label: '推荐 10', value: 10 }, { label: '推荐 15', value: 15 },
           ]} />
           {mode && (
             <Tooltip title={status?.notice || ''}>

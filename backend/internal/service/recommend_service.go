@@ -172,8 +172,11 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 	if len([]rune(query)) > 500 {
 		return nil, fmt.Errorf("需求描述过长 (上限 500 字)")
 	}
-	if opts.TopN <= 0 || opts.TopN > 10 {
-		opts.TopN = 5
+	if opts.TopN <= 0 {
+		opts.TopN = 10
+	}
+	if opts.TopN > 20 {
+		opts.TopN = 20
 	}
 	sources := normalizeSources(opts.Sources)
 
@@ -213,8 +216,12 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 		ghSkills, notice, err := s.gitHubCandidates(ctx, query)
 		ghNotice = notice
 		if err == nil {
+			ghScoredQuery := query
+			if hints := englishHints(query); len(hints) > 0 {
+				ghScoredQuery = query + " " + strings.Join(hints, " ")
+			}
 			for _, g := range ghSkills {
-				rel, matched := relevanceScore(query, g.Name, strings.Join(g.Tags, " "), g.Category, g.Description, "", "")
+				rel, matched := relevanceScore(ghScoredQuery, g.Name, strings.Join(g.Tags, " "), g.Category, g.Description, "", "")
 				if rel <= 0 {
 					continue
 				}
@@ -254,7 +261,7 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 	if maxRel > 0 {
 		kept := make([]cand, 0, len(pool))
 		for _, c := range pool {
-			if c.relRaw >= 0.35*maxRel {
+			if c.relRaw >= 0.28*maxRel {
 				kept = append(kept, c)
 			}
 		}
@@ -282,10 +289,10 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 	}
 	sort.SliceStable(pool, func(i, j int) bool { return pool[i].rec.MatchScore > pool[j].rec.MatchScore })
 
-	// ---- 对入选的 GitHub 候选做安全核查 (推荐前必做) ----
+	// ---- 对入选的 GitHub 候选做安全核查 (推荐前必做, 并行) ----
 	shortlist := pool
-	if len(shortlist) > 12 {
-		shortlist = shortlist[:12]
+	if len(shortlist) > 24 {
+		shortlist = shortlist[:24]
 	}
 	if opts.VerifyGitHub && contains(sources, sourceGitHub) && s.security != nil && s.github != nil {
 		result.VerifiedCount = s.verifyGitHubShortlist(ctx, shortlist)
@@ -345,41 +352,60 @@ func (s *RecommendService) providerLabel() string {
 	return "local"
 }
 
-// verifyGitHubShortlist 对 GitHub 候选逐个抓包并快速安全核查, 回填结果; 返回核查成功数
+// verifyGitHubShortlist 对 GitHub 候选并行抓包并快速安全核查, 回填结果; 返回核查成功数
 func (s *RecommendService) verifyGitHubShortlist(ctx context.Context, items []recoCandidate) int {
-	verified := 0
-	budget := 0
+	idxs := make([]int, 0, len(items))
 	for i := range items {
-		if items[i].rec.Source != sourceGitHub {
-			continue
+		if items[i].rec.Source == sourceGitHub && items[i].rec.Repository != "" {
+			idxs = append(idxs, i)
 		}
-		if budget >= 8 { // 控制耗时/配额: 最多核查 8 个
-			items[i].rec.SecurityStatus = "unverified"
-			continue
-		}
-		budget++
-		repo, ref, path := items[i].rec.Repository, items[i].rec.Ref, items[i].rec.Path
-		if repo == "" {
-			items[i].rec.SecurityStatus = "unverified"
-			continue
-		}
-		cctx, cancel := context.WithTimeout(ctx, 25*time.Second)
-		files, err := s.github.FetchSkillFiles(cctx, repo, ref, path)
-		if err != nil || len(files) == 0 {
+	}
+	if len(idxs) == 0 {
+		return 0
+	}
+	if len(idxs) > 12 { // 控制耗时/配额: 最多核查 12 个 (并行)
+		idxs = idxs[:12]
+	}
+	var mu sync.Mutex
+	verified := 0
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 4)
+	for _, idx := range idxs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			repo, ref, path := items[i].rec.Repository, items[i].rec.Ref, items[i].rec.Path
+			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			files, err := s.github.FetchSkillFiles(cctx, repo, ref, path)
+			if err != nil || len(files) == 0 {
+				cancel()
+				mu.Lock()
+				items[i].rec.SecurityStatus = "unverified"
+				items[i].rec.SecuritySummary = "未能抓取技能包, 未完成安全核查"
+				mu.Unlock()
+				return
+			}
+			subject := sec.ScanSubject{Type: "recommend", SkillKey: repo + ":" + path, SkillName: items[i].rec.Name,
+				Target: "github:" + repo, Trigger: "recommend"}
+			scan := s.security.QuickScan(cctx, subject, files)
 			cancel()
+			mu.Lock()
+			items[i].rec.SecurityStatus = scan.Verdict
+			items[i].rec.SecurityVerified = true
+			items[i].rec.RiskScore = scan.RiskScore
+			items[i].rec.SecuritySummary = scan.Summary
+			verified++
+			mu.Unlock()
+		}(idx)
+	}
+	wg.Wait()
+	// 未核查到的 GitHub 候选统一标记
+	for i := range items {
+		if items[i].rec.Source == sourceGitHub && items[i].rec.SecurityStatus == "" {
 			items[i].rec.SecurityStatus = "unverified"
-			items[i].rec.SecuritySummary = "未能抓取技能包, 未完成安全核查"
-			continue
 		}
-		subject := sec.ScanSubject{Type: "recommend", SkillKey: repo + ":" + path, SkillName: items[i].rec.Name,
-			Target: "github:" + repo, Trigger: "recommend"}
-		scan := s.security.QuickScan(cctx, subject, files)
-		cancel()
-		verified++
-		items[i].rec.SecurityStatus = scan.Verdict
-		items[i].rec.SecurityVerified = true
-		items[i].rec.RiskScore = scan.RiskScore
-		items[i].rec.SecuritySummary = scan.Summary
 	}
 	return verified
 }
@@ -446,7 +472,7 @@ func parsePGTags(raw string) []string {
 
 func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) ([]model.GitHubSkill, string, error) {
 	gq := buildGitHubQuery(query)
-	req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 25}
+	req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 50}
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	res, err := s.github.Search(cctx, req)
@@ -467,8 +493,8 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 		seen[key] = true
 		uniq = append(uniq, g)
 	}
-	if len(uniq) > 25 {
-		uniq = uniq[:25]
+	if len(uniq) > 50 {
+		uniq = uniq[:50]
 	}
 	// 补齐 star (代码搜索不返回), 供「收藏多优先」排序; 并发限流
 	var wg sync.WaitGroup
@@ -503,6 +529,20 @@ var zhHints = []struct{ zh, en string }{
 	{"报告", "report"}, {"报表", "report"}, {"文档", "document"}, {"监控", "monitor"}, {"运维", "ops"},
 	{"爬虫", "crawler"}, {"数据", "data"}, {"清洗", "clean"}, {"转换", "convert"}, {"翻译", "translate"},
 	{"总结", "summarize"}, {"检索", "search"}, {"知识库", "knowledge base"}, {"营销", "marketing"},
+}
+
+// englishHints 中文需求 → 英文检索提示 (供 GitHub 相关度打分, 与 buildGitHubQuery 同源)
+func englishHints(query string) []string {
+	lower := strings.ToLower(query)
+	seen := map[string]bool{}
+	out := []string{}
+	for _, h := range zhHints {
+		if strings.Contains(lower, h.zh) && !seen[h.en] {
+			seen[h.en] = true
+			out = append(out, h.en)
+		}
+	}
+	return out
 }
 
 func buildGitHubQuery(query string) string {
