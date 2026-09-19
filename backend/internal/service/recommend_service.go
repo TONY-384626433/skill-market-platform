@@ -251,19 +251,29 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 		return result, nil
 	}
 
-	// ---- 相关度阈值过滤 (剔除“蹭热度”的不相关仓库) ----
+	// ---- 相关度阈值过滤 (剔除“蹭热度”的不相关仓库); 不够则逐步放宽, 保证真有量 ----
 	maxRel := 0.0
 	for _, c := range pool {
 		if c.relRaw > maxRel {
 			maxRel = c.relRaw
 		}
 	}
-	if maxRel > 0 {
+	filterByRatio := func(ratio float64) []cand {
 		kept := make([]cand, 0, len(pool))
 		for _, c := range pool {
-			if c.relRaw >= 0.2*maxRel {
+			if c.relRaw >= ratio*maxRel {
 				kept = append(kept, c)
 			}
+		}
+		return kept
+	}
+	if maxRel > 0 {
+		kept := filterByRatio(0.2)
+		if len(kept) < 30 {
+			kept = filterByRatio(0.08)
+		}
+		if len(kept) < 20 {
+			kept = pool // 全要, 依靠排序把最相关的排在前面
 		}
 		pool = kept
 	}
@@ -363,13 +373,13 @@ func (s *RecommendService) verifyGitHubShortlist(ctx context.Context, items []re
 	if len(idxs) == 0 {
 		return 0
 	}
-	if len(idxs) > 16 { // 控制耗时/配额: 最多核查 16 个 (并行)
-		idxs = idxs[:16]
+	if len(idxs) > 20 { // 控制耗时/配额: 最多核查 20 个 (并行)
+		idxs = idxs[:20]
 	}
 	var mu sync.Mutex
 	verified := 0
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 6)
+	sem := make(chan struct{}, 8)
 	for _, idx := range idxs {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -471,36 +481,52 @@ func parsePGTags(raw string) []string {
 // ---------- GitHub 候选 ----------
 
 func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) ([]model.GitHubSkill, string, error) {
-	gq := buildGitHubQuery(query)
-	req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 100}
-	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	res, err := s.github.Search(cctx, req)
-	if err != nil {
-		return nil, "", err
-	}
-	if res == nil {
-		return nil, "", fmt.Errorf("GitHub 返回为空")
-	}
-	// 去重: 同一仓库只保留一条 (避免同仓库多个 SKILL.md 刷屏)
-	seen := map[string]bool{}
-	uniq := make([]model.GitHubSkill, 0, len(res.Data))
-	for _, g := range res.Data {
-		key := strings.ToLower(g.Repository)
-		if key == "" || seen[key] {
+	variants := gitHubQueryVariants(query)
+	seenRepo := map[string]bool{}
+	out := make([]model.GitHubSkill, 0, 120)
+	var notice string
+	var lastErr error
+	for i, gq := range variants {
+		if i >= 3 { // 代码搜索有频率限制(30/分), 最多 3 路
+			break
+		}
+		req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 40}
+		cctx, cancel := context.WithTimeout(ctx, 18*time.Second)
+		res, err := s.github.Search(cctx, req)
+		cancel()
+		if err != nil || res == nil {
+			if err != nil {
+				lastErr = err
+			}
 			continue
 		}
-		seen[key] = true
-		uniq = append(uniq, g)
+		if notice == "" {
+			notice = res.Notice
+		}
+		for _, g := range res.Data {
+			key := strings.ToLower(g.Repository)
+			if key == "" || seenRepo[key] {
+				continue
+			}
+			seenRepo[key] = true
+			out = append(out, g)
+		}
 	}
-	if len(uniq) > 100 {
-		uniq = uniq[:100]
+	if len(out) == 0 && lastErr != nil {
+		return nil, notice, lastErr
 	}
-	// 补齐 star (代码搜索不返回), 供「收藏多优先」排序; 并发限流
+	if len(out) > 100 {
+		out = out[:100]
+	}
+	// 补齐 star (代码搜索不返回), 供「收藏多优先」排序; 只查前 60 个控制耗时, 并发限流
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 12)
-	for i := range uniq {
-		if uniq[i].Repository == "" {
+	sem := make(chan struct{}, 16)
+	limit := len(out)
+	if limit > 60 {
+		limit = 60
+	}
+	for i := 0; i < limit; i++ {
+		if out[i].Repository == "" {
 			continue
 		}
 		wg.Add(1)
@@ -510,15 +536,48 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 			defer func() { <-sem }()
 			sc, cancel := context.WithTimeout(ctx, 12*time.Second)
 			defer cancel()
-			stars, _, branch := s.github.RepositoryStats(sc, uniq[idx].Repository)
-			uniq[idx].Stars = stars
+			stars, _, branch := s.github.RepositoryStats(sc, out[idx].Repository)
+			out[idx].Stars = stars
 			if branch != "" {
-				uniq[idx].Ref = branch // 用真实默认分支, 避免 main/master 不一致导致后续抓包 404
+				out[idx].Ref = branch // 用真实默认分支, 避免 main/master 不一致导致后续抓包 404
 			}
 		}(i)
 	}
 	wg.Wait()
-	return uniq, res.Notice, nil
+	return out, notice, nil
+}
+
+// gitHubQueryVariants 生成多路检索词, 提升召回 (合并后去重)
+func gitHubQueryVariants(query string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	add := func(q string) {
+		q = strings.TrimSpace(q)
+		if q == "" || seen[strings.ToLower(q)] {
+			return
+		}
+		seen[strings.ToLower(q)] = true
+		out = append(out, q)
+	}
+	// 1) 组合查询 (英文词 + 中文提示混合)
+	add(buildGitHubQuery(query))
+	// 2) 单个英文提示词 (代码搜索是 AND, 单词召回更广)
+	for _, h := range englishHints(query) {
+		add(h)
+		if len(out) >= 3 {
+			break
+		}
+	}
+	// 3) 无中文提示时用 ASCII 单词
+	if len(out) == 1 {
+		for _, w := range reASCIIWord.FindAllString(strings.ToLower(query), -1) {
+			add(w)
+			if len(out) >= 3 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 // zhHints 中文关键词 → 英文检索提示 (按优先级排序, 提升 GitHub 代码搜索命中率)
