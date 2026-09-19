@@ -118,7 +118,7 @@ export default function RecommendPage() {
   const navigate = useNavigate();
   const [text, setText] = useState('');
   const [source, setSource] = useState('all');
-  const [topN, setTopN] = useState(10);
+  const [topN, setTopN] = useState(15);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState(null);
@@ -178,7 +178,7 @@ export default function RecommendPage() {
             { label: <span><GithubOutlined /> GitHub</span>, value: 'github' },
           ]} />
           <Segmented value={topN} onChange={setTopN} options={[
-            { label: '推荐 6', value: 6 }, { label: '推荐 10', value: 10 }, { label: '推荐 15', value: 15 },
+            { label: '推荐 10', value: 10 }, { label: '推荐 20', value: 20 }, { label: '推荐 30', value: 30 },
           ]} />
           {mode && (
             <Tooltip title={status?.notice || ''}>
@@ -193,10 +193,6 @@ export default function RecommendPage() {
             placeholder="例如：把生产日志里的身份证和手机号脱敏；或：data analysis of sales csv…"
             onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); run(); } }} maxLength={500} showCount />
           <Button type="primary" size="large" icon={<SearchOutlined />} loading={loading} onClick={() => run()}>帮我找技能</Button>
-        </div>
-        <div className="reco-examples">
-          <span>试试：</span>
-          {EXAMPLES.map((ex) => <button key={ex} type="button" onClick={() => { setText(ex); run(ex); }}>{ex}</button>)}
         </div>
       </header>
 

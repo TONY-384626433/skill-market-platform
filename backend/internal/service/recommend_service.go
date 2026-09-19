@@ -173,10 +173,10 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 		return nil, fmt.Errorf("需求描述过长 (上限 500 字)")
 	}
 	if opts.TopN <= 0 {
-		opts.TopN = 10
+		opts.TopN = 15
 	}
-	if opts.TopN > 20 {
-		opts.TopN = 20
+	if opts.TopN > 30 {
+		opts.TopN = 30
 	}
 	sources := normalizeSources(opts.Sources)
 
@@ -261,7 +261,7 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 	if maxRel > 0 {
 		kept := make([]cand, 0, len(pool))
 		for _, c := range pool {
-			if c.relRaw >= 0.28*maxRel {
+			if c.relRaw >= 0.2*maxRel {
 				kept = append(kept, c)
 			}
 		}
@@ -291,8 +291,8 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 
 	// ---- 对入选的 GitHub 候选做安全核查 (推荐前必做, 并行) ----
 	shortlist := pool
-	if len(shortlist) > 24 {
-		shortlist = shortlist[:24]
+	if len(shortlist) > 40 {
+		shortlist = shortlist[:40]
 	}
 	if opts.VerifyGitHub && contains(sources, sourceGitHub) && s.security != nil && s.github != nil {
 		result.VerifiedCount = s.verifyGitHubShortlist(ctx, shortlist)
@@ -363,13 +363,13 @@ func (s *RecommendService) verifyGitHubShortlist(ctx context.Context, items []re
 	if len(idxs) == 0 {
 		return 0
 	}
-	if len(idxs) > 12 { // 控制耗时/配额: 最多核查 12 个 (并行)
-		idxs = idxs[:12]
+	if len(idxs) > 16 { // 控制耗时/配额: 最多核查 16 个 (并行)
+		idxs = idxs[:16]
 	}
 	var mu sync.Mutex
 	verified := 0
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 4)
+	sem := make(chan struct{}, 6)
 	for _, idx := range idxs {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -472,7 +472,7 @@ func parsePGTags(raw string) []string {
 
 func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) ([]model.GitHubSkill, string, error) {
 	gq := buildGitHubQuery(query)
-	req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 50}
+	req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 100}
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	res, err := s.github.Search(cctx, req)
@@ -493,12 +493,12 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 		seen[key] = true
 		uniq = append(uniq, g)
 	}
-	if len(uniq) > 50 {
-		uniq = uniq[:50]
+	if len(uniq) > 100 {
+		uniq = uniq[:100]
 	}
 	// 补齐 star (代码搜索不返回), 供「收藏多优先」排序; 并发限流
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, 12)
 	for i := range uniq {
 		if uniq[i].Repository == "" {
 			continue
