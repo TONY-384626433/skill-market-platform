@@ -52,6 +52,9 @@ var securitySchemaStatements = []string{
 	`CREATE INDEX IF NOT EXISTS idx_sec_scans_verdict ON skill_security_scans(verdict)`,
 	// 动态沙箱行为验证报告 (后续版本新增, 幂等补齐)
 	`ALTER TABLE skill_security_scans ADD COLUMN IF NOT EXISTS sandbox JSONB`,
+	// 第三道防线: AI 语义审计报告 + 第一道防线语义事实画像 (幂等补齐)
+	`ALTER TABLE skill_security_scans ADD COLUMN IF NOT EXISTS semantic JSONB`,
+	`ALTER TABLE skill_security_scans ADD COLUMN IF NOT EXISTS semantic_facts JSONB`,
 
 	// ---------- 溯源档案 (防盗用) ----------
 	`CREATE TABLE IF NOT EXISTS skill_provenance (

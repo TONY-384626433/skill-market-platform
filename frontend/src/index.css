@@ -1497,3 +1497,27 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .sec-sandbox-io summary { cursor: pointer; color: #7f93ab; font-size: 12px; }
 .sec-sandbox-io pre { margin: 6px 0 0; padding: 8px 10px; border-radius: 6px; background: #060d18; color: #9fe8c8; font-size: 12px; max-height: 180px; overflow: auto; white-space: pre-wrap; }
 .sec-sandbox-io pre.sec-stderr { color: #ffb1c1; }
+
+/* ---------- 三道防线 (静态/AST 语义 · 沙箱 · AI 语义审计) ---------- */
+.sec-defense { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 14px 0; }
+.sec-defense-line { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid #1d344f; border-radius: 10px; background: linear-gradient(160deg, rgba(11,22,38,.9), rgba(8,16,28,.75)); }
+.sec-defense-line.ln-static { border-left: 3px solid #b98cff; }
+.sec-defense-line.ln-sandbox { border-left: 3px solid #4ee2ff; }
+.sec-defense-line.ln-semantic { border-left: 3px solid #52e0a0; }
+.sec-defense-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sec-defense-head strong { color: #eaf4ff; font-size: 13.5px; }
+.sec-defense-head .anticon { color: #7fd8ff; }
+.sec-defense-no { padding: 1px 7px; border-radius: 6px; background: rgba(185,140,255,.16); color: #cbb0ff; font-size: 12px; }
+.sec-defense-line p { margin: 0; font-size: 12px; line-height: 1.5; }
+.sec-defense-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sec-defense-meta code { color: #9fe8c8; font-size: 11px; }
+
+.sec-semantic, .sec-facts { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid #16423a; border-left: 3px solid #52e0a0; border-radius: 8px; background: rgba(8,22,20,.6); }
+.sec-semantic .sec-sandbox-title .anticon { color: #52e0a0; }
+.sec-facts-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-weight: 600; color: #eaf4ff; }
+.sec-facts-head .anticon { color: #b98cff; }
+.sec-facts-head .sec-muted { font-weight: 400; font-size: 12px; }
+.sec-facts-caps { display: flex; flex-wrap: wrap; gap: 6px; }
+.sec-semantic-tab { display: flex; flex-direction: column; gap: 12px; }
+.sec-semantic-tab .sec-semantic-actions { margin-top: 2px; }
+.sec-semantic-desc { margin-top: 2px; }

@@ -127,7 +127,7 @@ func metadataMissing(text string) (bool, string) {
 }
 
 var (
-	claimNoNetwork = regexp.MustCompile(`(?i)(无(任何)?网络|不(进行|发起)网络|离线(运行|模式)|no\s+network|without\s+network|offline\s+(only|mode)|\bno\s+internet\b)`)
+	claimNoNetwork = regexp.MustCompile(`(?i)(无(任何)?(网络|联网|外联)|不(会|进行|发起|使用|访问)(任何)?(网络|联网|外联)|离线(运行|模式)|no\s+network|without\s+network|offline\s+(only|mode)|\bno\s+internet\b)`)
 	claimReadOnly  = regexp.MustCompile(`(?i)(只读|不(会)?(写入|修改)文件|read[\s-]?only|does\s+not\s+(write|modify)\s+files?|no\s+file\s+write)`)
 	codeNetworkUse = regexp.MustCompile(`(?i)(requests\.(get|post|put)|urllib\.request|httpx\.|aiohttp\.|axios\.|fetch\s*\(\s*['"]https?://|net\.http|http\.client|HttpClient|Invoke-WebRequest|Invoke-RestMethod|curl\s+https?://|wget\s+https?://|socket\.socket\()`)
 	codeFileWrite  = regexp.MustCompile(`(?i)(open\s*\([^)]{0,80}['"][wa]\+?b?['"]|fs\.writeFile|os\.remove|shutil\.(rmtree|move|copy)|unlinkSync|removeSync|rmtree|os\.rename|Path\([^)]*\)\.write_text|with\s+open\([^)]*['"]w)`)

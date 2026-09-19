@@ -96,6 +96,9 @@ export const submitImportRequest = (repo, ref, path, skillUrl) =>
   api.post('/github/import-requests', { repository: repo, ref, path, skill_url: skillUrl }, { timeout: 180000 });
 export const getImportRequest = (reqId) => api.get(`/github/import-requests/${reqId}`);
 export const getSecurityRulesExportURL = () => `${(import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '')}/admin/security-rules/export`;
+// 三道防线 (第一道 静态/AST 语义 · 第二道 沙箱 · 第三道 AI 语义审计)
+export const getDefenseStatus = () => api.get('/admin/security/defense-status');
+export const runSemanticAudit = (payload) => api.post('/admin/security/semantic-audit', payload, { timeout: 120000 });
 export const scanPackage = (file) => {
   const form = new FormData();
   form.append('file', file);

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -156,7 +157,37 @@ func (c *SandboxClient) Verify(ctx context.Context, skillKey string, files []mod
 	if raw.VerdictHint == "skipped" {
 		raw.Status = "skipped"
 	}
+	applyMonitorCoverage(&raw)
 	return &raw
+}
+
+// sandboxMonitorGroups 全链路监控通道 (沙箱行为事件桶 -> 监控通道)
+var sandboxMonitorGroups = map[string][]string{
+	"文件系统":  {"file_write", "delete"},
+	"网络":    {"network", "listen"},
+	"进程":    {"exec"},
+	"凭据":    {"sensitive_read"},
+	"持久化":   {"persist"},
+	"常规文件":  {"benign"},
+}
+
+// applyMonitorCoverage 汇总「全链路监控」结果 (通道 -> 事件数 + 通道清单)
+func applyMonitorCoverage(r *model.SandboxReport) {
+	monitor := map[string]int{}
+	for channel, kinds := range sandboxMonitorGroups {
+		total := 0
+		for _, k := range kinds {
+			total += r.Events[k]
+		}
+		monitor[channel] = total
+	}
+	r.Monitor = monitor
+	channels := make([]string, 0, len(sandboxMonitorGroups))
+	for c := range sandboxMonitorGroups {
+		channels = append(channels, c)
+	}
+	sort.Strings(channels)
+	r.Monitored = channels
 }
 
 // SandboxEngineMeta 引擎元信息中的沙箱状态 (供前端/审计)

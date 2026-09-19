@@ -17,7 +17,7 @@ import (
 //   都要过一遍这层静态安检, 阻断病毒/木马/后门/提示注入/供应链投毒。
 // ============================================================
 
-const engineVersion = "SEC-ENGINE 2.0.0"
+const engineVersion = "SEC-ENGINE 3.0.0"
 
 // ScanSubject 扫描对象元信息
 type ScanSubject struct {
@@ -88,6 +88,7 @@ var categoryCN = map[string]string{
 	"execution": "危险执行", "network": "网络外联", "credential": "凭据窃取", "obfuscation": "代码混淆",
 	"persistence": "持久化/提权", "destructive": "破坏性操作", "injection": "提示注入", "supply_chain": "供应链风险",
 	"malware": "恶意软件", "integrity": "完整性", "compliance": "合规一致性",
+	"evasion": "反调试/规避", "semantic": "语义风险", "social_engineering": "社工/意图",
 }
 
 // Rules 返回规则说明表 (供前端展示)
@@ -234,6 +235,19 @@ func ScanFiles(subject ScanSubject, files []model.SkillFile) *model.SecurityScan
 						Title: ruleTitle("HALL-02"), Detail: ruleDetail("HALL-02") + " (" + why + ")", File: f.Path})
 				}
 			}
+		}
+	}
+
+	// 第一道防线 · 语义层: 能力推理 + 混淆载荷解码 + 声明一致性 (AST-01 ~ AST-08)
+	semFindings, semFacts := AnalyzeSemantics(files)
+	for _, sf := range semFindings {
+		addFinding(sf)
+	}
+	scan.Facts = semFacts
+	if semFacts != nil {
+		for _, note := range semFacts.Consistency {
+			addFinding(model.SecurityFinding{RuleID: "AST-08", Category: "compliance", Severity: "high",
+				Title: "语义一致性：声明能力与代码能力不符", Detail: note})
 		}
 	}
 

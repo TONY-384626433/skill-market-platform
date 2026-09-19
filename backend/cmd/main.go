@@ -82,7 +82,7 @@ func main() {
 	if err := secengine.ValidateKeyMaterial(); err != nil {
 		log.Fatalf("签名密钥自检未通过: %v", err)
 	}
-	securityService := service.NewSecurityService(db)
+	securityService := service.NewSecurityService(db, cfg)
 	securityHandler := handler.NewSecurityHandler(securityService, githubService)
 	githubHandler.AttachSecurity(securityService)
 	log.Printf("[security] 规则库已装载: %v", secengine.RulesMeta())
@@ -432,6 +432,7 @@ func main() {
 	r.GET("/api/v1/security/rules", securityHandler.SecurityRules)
 	r.GET("/api/v1/security/engine", securityHandler.SecurityRules)
 	r.GET("/api/v1/skills/:id/security-badge", securityHandler.SkillSecurityBadge)
+	r.GET("/api/v1/security/defense-status", securityHandler.DefenseStatus)
 
 	// ============================================================
 	// 需认证路由
@@ -500,6 +501,8 @@ func main() {
 			admin.POST("/import-requests/:reqId/decision", securityHandler.DecideImport)
 			admin.GET("/security-rules/export", securityHandler.ExportRules)
 			admin.POST("/security/scan-package", securityHandler.ScanPackage)
+			admin.POST("/security/semantic-audit", securityHandler.SemanticAudit)
+			admin.GET("/security/defense-status", securityHandler.DefenseStatus)
 		}
 	}
 

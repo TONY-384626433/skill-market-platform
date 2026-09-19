@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jjbank/skill-market/internal/service"
@@ -20,6 +21,37 @@ func NewSecurityHandler(svc *service.SecurityService, github *service.GitHubServ
 }
 
 // ---------- 公开 ----------
+
+// DefenseStatus GET /api/v1/admin/security/defense-status
+// 三道防线总体状态 (代码级检测 / 动态沙箱 / AI 语义审计)
+func (h *SecurityHandler) DefenseStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, h.svc.DefenseStatus())
+}
+
+// SemanticAudit POST /api/v1/admin/security/semantic-audit
+// 第三道防线: 对指定技能或一段文本跑 AI 语义审计 (社工话术 + 意图深度分析)
+func (h *SecurityHandler) SemanticAudit(c *gin.Context) {
+	var req struct {
+		SkillID string `json:"skill_id"`
+		Text    string `json:"text"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	var report interface{}
+	var err error
+	if strings.TrimSpace(req.SkillID) != "" {
+		report, err = h.svc.SemanticAuditSkill(c.Request.Context(), req.SkillID)
+	} else {
+		report, err = h.svc.SemanticAuditText(c.Request.Context(), req.Text)
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": report})
+}
 
 // SecurityRules 规则库说明 (透明可审计)
 func (h *SecurityHandler) SecurityRules(c *gin.Context) {

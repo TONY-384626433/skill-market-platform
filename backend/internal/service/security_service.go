@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jjbank/skill-market/internal/config"
 	"github.com/jjbank/skill-market/internal/model"
 	sec "github.com/jjbank/skill-market/internal/security"
 )
@@ -32,10 +33,11 @@ type SecurityService struct {
 	blockOnCritical bool
 	simThreshold    float64
 	sandbox         *SandboxClient
+	semantic        *SemanticAuditService
 }
 
 // NewSecurityService 构建服务
-func NewSecurityService(db *sql.DB) *SecurityService {
+func NewSecurityService(db *sql.DB, cfg *config.Config) *SecurityService {
 	skillsDir := strings.TrimSpace(os.Getenv("SEED_SKILLS_DIR"))
 	if skillsDir == "" {
 		skillsDir = filepath.Join("..", "seed-skills")
@@ -53,6 +55,7 @@ func NewSecurityService(db *sql.DB) *SecurityService {
 		blockOnCritical: true,
 		simThreshold:    0.75,
 		sandbox:         NewSandboxClient(),
+		semantic:        NewSemanticAuditService(cfg),
 	}
 }
 
@@ -189,6 +192,15 @@ func (s *SecurityService) runScan(ctx context.Context, subject sec.ScanSubject, 
 		}
 	}
 
+	// 第三道防线 · AI 语义审计: 识别社工话术 + 文档意图与代码能力的深度对撞
+	if s.semantic != nil {
+		report := s.semantic.Audit(ctx, subject, files, scan.Facts)
+		scan.Semantic = report
+		if len(report.Findings) > 0 {
+			sec.MergeFindings(scan, report.Findings)
+		}
+	}
+
 	if err := s.persistScan(ctx, scan); err != nil {
 		return nil, err
 	}
@@ -243,17 +255,29 @@ func (s *SecurityService) persistScan(ctx context.Context, scan *model.SecurityS
 			sandbox = sql.NullString{String: string(raw), Valid: true}
 		}
 	}
+	semantic := sql.NullString{}
+	if scan.Semantic != nil {
+		if raw, err := json.Marshal(scan.Semantic); err == nil {
+			semantic = sql.NullString{String: string(raw), Valid: true}
+		}
+	}
+	facts := sql.NullString{}
+	if scan.Facts != nil {
+		if raw, err := json.Marshal(scan.Facts); err == nil {
+			facts = sql.NullString{String: string(raw), Valid: true}
+		}
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO skill_security_scans (id, subject_type, skill_id, skill_key, skill_name, version, target,
 			verdict, verdict_cn, risk_score, grade, findings, finding_count, critical_count, high_count,
 			files_scanned, bytes_scanned, duration_ms, engine_version, content_hash, sim_hash, trigger_type,
-			triggered_by, summary, reupload, reupload_suspected, sandbox)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
+			triggered_by, summary, reupload, reupload_suspected, sandbox, semantic, semantic_facts)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
 		scan.ID, scan.SubjectType, nullIfEmpty(scan.SkillID), nullIfEmpty(scan.SkillKey), nullIfEmpty(scan.SkillName),
 		nullIfEmpty(scan.Version), nullIfEmpty(scan.Target), scan.Verdict, scan.VerdictCN, scan.RiskScore, scan.Grade,
 		string(findings), scan.FindingCount, scan.CriticalCount, scan.HighCount, scan.FilesScanned, scan.BytesScanned,
 		scan.DurationMs, scan.EngineVersion, scan.ContentHash, scan.SimHashHex, scan.TriggerType,
-		nullIfEmpty(scan.TriggeredBy), scan.Summary, string(reupload), scan.ReuploadSuspected, sandbox)
+		nullIfEmpty(scan.TriggeredBy), scan.Summary, string(reupload), scan.ReuploadSuspected, sandbox, semantic, facts)
 	return err
 }
 
@@ -276,18 +300,19 @@ func (s *SecurityService) applySkillSecurityState(ctx context.Context, skillID s
 // ScanByID 查询单次扫描
 func (s *SecurityService) ScanByID(ctx context.Context, scanID string) (*model.SecurityScan, error) {
 	scan := &model.SecurityScan{}
-	var findings, reupload, sandbox sql.NullString
+	var findings, reupload, sandbox, semantic, facts sql.NullString
 	var skillID, skillKey, skillName, version, target, triggerBy sql.NullString
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, subject_type, skill_id, skill_key, skill_name, version, target, verdict, verdict_cn,
 		       risk_score, grade, findings, finding_count, critical_count, high_count, files_scanned,
 		       bytes_scanned, duration_ms, engine_version, content_hash, trigger_type, triggered_by,
-		       summary, created_at, reupload, sandbox
+		       summary, created_at, reupload, sandbox, semantic, semantic_facts
 		FROM skill_security_scans WHERE id=$1`, scanID).
 		Scan(&scan.ID, &scan.SubjectType, &skillID, &skillKey, &skillName, &version, &target, &scan.Verdict,
 			&scan.VerdictCN, &scan.RiskScore, &scan.Grade, &findings, &scan.FindingCount, &scan.CriticalCount,
 			&scan.HighCount, &scan.FilesScanned, &scan.BytesScanned, &scan.DurationMs, &scan.EngineVersion,
-			&scan.ContentHash, &scan.TriggerType, &triggerBy, &scan.Summary, &scan.CreatedAt, &reupload, &sandbox)
+			&scan.ContentHash, &scan.TriggerType, &triggerBy, &scan.Summary, &scan.CreatedAt, &reupload, &sandbox,
+			&semantic, &facts)
 	if err != nil {
 		return nil, err
 	}
@@ -295,6 +320,18 @@ func (s *SecurityService) ScanByID(ctx context.Context, scanID string) (*model.S
 		var sb model.SandboxReport
 		if json.Unmarshal([]byte(sandbox.String), &sb) == nil {
 			scan.Sandbox = &sb
+		}
+	}
+	if semantic.Valid && semantic.String != "" {
+		var sm model.SemanticAuditReport
+		if json.Unmarshal([]byte(semantic.String), &sm) == nil {
+			scan.Semantic = &sm
+		}
+	}
+	if facts.Valid && facts.String != "" {
+		var sf model.SemanticFacts
+		if json.Unmarshal([]byte(facts.String), &sf) == nil {
+			scan.Facts = &sf
 		}
 	}
 	scan.SkillID, scan.SkillKey, scan.SkillName = skillID.String, skillKey.String, skillName.String

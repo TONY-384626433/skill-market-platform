@@ -57,12 +57,46 @@ type SandboxReport struct {
 	TraceLines     int                    `json:"trace_lines,omitempty"`
 	Isolated       map[string]interface{} `json:"isolated,omitempty"`
 	Events         map[string]int         `json:"events,omitempty"`
+	Monitor        map[string]int         `json:"monitor,omitempty"`         // 全链路监控: 通道 -> 事件数
+	Monitored      []string               `json:"monitored_channels,omitempty"` // 已监控通道清单
 	MCP            map[string]interface{} `json:"mcp,omitempty"`
 	Checks         []SandboxCheck         `json:"checks,omitempty"`
 	Findings       []SecurityFinding      `json:"findings,omitempty"`
 	FilesystemDiff map[string][]string    `json:"filesystem_diff,omitempty"`
 	StdoutTail     string                 `json:"stdout_tail,omitempty"`
 	StderrTail     string                 `json:"stderr_tail,omitempty"`
+}
+
+// SemanticFacts 静态语义分析事实 (能力画像, 第一道防线的可解释产物)
+type SemanticFacts struct {
+	Engine         string         `json:"engine"`
+	Languages      []string       `json:"languages"`
+	FilesAnalyzed  int            `json:"files_analyzed"`
+	Capabilities   map[string]int `json:"capabilities"`
+	DecodedPayload int            `json:"decoded_payloads"`
+	Consistency    []string       `json:"consistency,omitempty"`
+}
+
+// SemanticAuditReport AI 语义审计报告 (第三道防线)
+//   - mode=llm:       大模型对文档/代码做意图深度分析 + 社工话术识别
+//   - mode=heuristic: 未配置大模型时的本地社工语言学启发式引擎 (保证演示永远可用)
+type SemanticAuditReport struct {
+	Engine     string            `json:"engine"`
+	Mode       string            `json:"mode"`   // llm / heuristic
+	Model      string            `json:"model,omitempty"`
+	Status     string            `json:"status"` // ok / skipped / error
+	Notice     string            `json:"notice,omitempty"`
+	DurationMs int               `json:"duration_ms"`
+	RiskScore  int               `json:"risk_score"`
+	SignalCount int              `json:"signal_count"`
+	Declared   string            `json:"declared_intent,omitempty"`
+	Inferred   string            `json:"inferred_intent,omitempty"`
+	Divergence bool              `json:"intent_divergence"`
+	Fallback   bool              `json:"fallback,omitempty"`
+	Techniques []string          `json:"techniques,omitempty"` // 命中的人话术/操纵手法
+	Findings   []SecurityFinding `json:"findings,omitempty"`
+	Analyzed   []string          `json:"analyzed_files,omitempty"`
+	CreatedAt  time.Time         `json:"created_at"`
 }
 
 // AVEngine 外部查毒引擎状态 (ClamAV / YARA)
@@ -107,6 +141,8 @@ type SecurityScan struct {
 	Summary        string            `json:"summary"`
 	AVEngines      []AVEngine        `json:"av_engines,omitempty"`
 	Sandbox        *SandboxReport    `json:"sandbox,omitempty"`
+	Facts          *SemanticFacts    `json:"semantic_facts,omitempty"`
+	Semantic       *SemanticAuditReport `json:"semantic,omitempty"`
 	KeyID          string            `json:"key_id,omitempty"`
 	CreatedAt      time.Time         `json:"created_at"`
 	// 查重 (防盗用)

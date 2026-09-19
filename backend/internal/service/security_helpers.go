@@ -54,6 +54,12 @@ func SecurityPolicy() map[string]interface{} {
 			"rules":       "DYN-01 ~ DYN-08",
 			"api":         SandboxEngineMeta(),
 		},
+		"ai_semantic_audit": map[string]interface{}{
+			"mode":        "intent_and_social_engineering",
+			"description": "对文档/代码做语义审计: 识别社工话术(冒充权威/制造紧迫/情感诱导/隐瞒目的/索取凭据/规避审查) 并对撞宣称意图与真实意图",
+			"rules":       "SEM-01 ~ SEM-07",
+			"engine":      (&SemanticAuditService{}).Status(),
+		},
 		"provenance": map[string]interface{}{
 			"watermark":   "每个技能与每次交付均带唯一水印, 泄漏可追溯到下载人",
 			"fingerprint": "内容指纹 + SimHash 相似度, 改名重传同样会被识别",
@@ -65,6 +71,58 @@ func SecurityPolicy() map[string]interface{} {
 
 // SecurityRulesExport 导出规则库 (审计/备份)
 func SecurityRulesExport() ([]byte, error) { return sec.MarshalRulesFile() }
+
+// DefenseStatus 三道防线总体状态 (供前端与审计展示)
+func (s *SecurityService) DefenseStatus() map[string]interface{} {
+	sandbox := SandboxEngineMeta()
+	sandboxMode := "active"
+	if enabled, ok := sandbox["enabled"].(bool); ok && !enabled {
+		sandboxMode = "disabled"
+	} else if reachable, ok := sandbox["reachable"].(bool); ok && !reachable {
+		sandboxMode = "unreachable"
+	}
+	semantic := map[string]interface{}{}
+	if s != nil && s.semantic != nil {
+		semantic = s.semantic.Status()
+	} else {
+		semantic = (&SemanticAuditService{}).Status()
+	}
+	return map[string]interface{}{
+		"engine_version": sec.EngineVersion(),
+		"defense_in_depth": true,
+		"lines": []map[string]interface{}{
+			{
+				"line": 1, "key": "static",
+				"name":        "代码级检测 (静态分析 + AST/能力语义分析)",
+				"engine":      sec.SemanticEngine(),
+				"rules":       "AST-01 ~ AST-08 (语义) + 正则规则库",
+				"rule_count":  sec.RuleCount(),
+				"mode":        "active",
+				"description": "去注释/合并拼接/解码 base64·hex·字符码后重新语义扫描; 以能力(执行/外联/读凭据/破坏/持久化/反沙箱)而非关键词判定",
+				"capabilities": []string{"危险执行", "网络外联", "凭据读取", "破坏性操作", "持久化", "编码载荷", "反沙箱"},
+			},
+			{
+				"line": 2, "key": "sandbox",
+				"name":        "动态沙箱验证 (隔离环境 + 全链路监控)",
+				"engine":      sec.SandboxEngine(),
+				"rules":       "DYN-01 ~ DYN-08",
+				"mode":        sandboxMode,
+				"description": "无外网出口 / 只读根 / 非 root / cap-drop ALL / 资源限额 的隔离容器中真跑一次, 全链路监控行为",
+				"channels":    []string{"文件系统", "网络", "进程", "凭据", "持久化", "常规文件"},
+				"runtime":     sandbox,
+			},
+			{
+				"line": 3, "key": "semantic",
+				"name":        "AI 语义审计 (社工话术 + 意图深度分析)",
+				"engine":      semanticAuditEngine,
+				"rules":       "SEM-01 ~ SEM-07",
+				"mode":        semantic["mode"],
+				"description": "识别社工话术, 并对撞「文档宣称意图」与「代码/行为真实意图」, 判定隐藏目的",
+				"engine_status": semantic,
+			},
+		},
+	}
+}
 
 // ---------- 安全徽章 ----------
 
@@ -272,6 +330,30 @@ func (s *SecurityService) ScanUploadedPackage(ctx context.Context, filename stri
 	subject := sec.ScanSubject{Type: "package", SkillKey: filename, SkillName: filename,
 		Target: "upload://" + filename, Trigger: "upload", TriggerBy: userID, TriggerNam: userName}
 	return s.runScan(ctx, subject, files)
+}
+
+// SemanticAuditSkill 对已入库技能单独跑一次第三道防线 (AI 语义审计)
+func (s *SecurityService) SemanticAuditSkill(ctx context.Context, skillID string) (*model.SemanticAuditReport, error) {
+	files, _, err := s.SkillFiles(skillID, "")
+	if err != nil {
+		return nil, err
+	}
+	_, facts := sec.AnalyzeSemantics(files)
+	subject := sec.ScanSubject{Type: "skill", SkillID: skillID, Trigger: "semantic"}
+	return s.semantic.Audit(ctx, subject, files, facts), nil
+}
+
+// SemanticAuditText 对一段自由文本跑 AI 语义审计 (在线演示/即席审查)
+func (s *SecurityService) SemanticAuditText(ctx context.Context, text string) (*model.SemanticAuditReport, error) {
+	if strings.TrimSpace(text) == "" {
+		return nil, fmt.Errorf("请输入待审计文本")
+	}
+	if len(text) > 20000 {
+		text = text[:20000]
+	}
+	files := []model.SkillFile{{Path: "pasted-text.md", Size: int64(len(text)), Content: []byte(text), Text: text}}
+	subject := sec.ScanSubject{Type: "text", SkillName: "即席文本审计", Trigger: "semantic"}
+	return s.semantic.Audit(ctx, subject, files, nil), nil
 }
 
 // EnsureProvenanceSignature 用已有清单重算签名 (安装前验签用)

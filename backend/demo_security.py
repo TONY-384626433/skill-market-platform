@@ -7,7 +7,8 @@
   2. 内部技能静态查毒
   3. 上传技能包安全预检: 正常包 -> 放行; 恶意包 -> 阻断并列出命中规则; 路径穿越包 -> 拦截
   4. 动态沙箱: 可执行技能在隔离容器(无外网/只读根/非root)真跑一次, 观测外联/命令执行/窃密/持久化
-  5. GitHub 导入门禁: 未审核直接下载 -> 403 拒绝
+  5. AI 语义审计: 社工话术识别 + 文档意图与代码能力对撞 (隐藏目的)
+  6. GitHub 导入门禁: 未审核直接下载 -> 403 拒绝
 """
 
 import json
@@ -128,14 +129,32 @@ def main():
             missing = [rid for rid in samples.EXPECTED_DYN_RULES if rid not in hits]
             print('             动态规则覆盖: %s' % ('全部命中' if not missing else '缺少 ' + ','.join(missing)))
 
-    print('[6] GitHub 导入门禁 (先审核, 后下载)')
+    print('[6] AI 语义审计 (第三道防线: 社工话术识别 + 意图深度分析)')
+    st, dstat = call('GET', '/admin/security/defense-status', auth=admin)
+    for l in dstat.get('lines', []):
+        print('    第%s道 %-36s 模式=%s' % (l.get('line'), l.get('name'), l.get('mode')))
+    st, out = call('POST', '/admin/security/semantic-audit', {'text': samples.SOCIAL_ENGINEERING_TEXT}, auth=admin)
+    rep = out.get('data', {})
+    sem_hits = sorted({f['rule_id'] for f in (rep.get('findings') or [])})
+    print('    社工话术文本 -> 风险分 %s, 手法: %s' % (rep.get('risk_score'), '、'.join(rep.get('techniques') or [])))
+    print('    命中规则   : %s' % ', '.join(sem_hits))
+    st, out = call('POST', '/admin/security/scan-package', auth=admin, form=('file', samples.semantic_zip()))
+    scan = out.get('data', {})
+    sem = scan.get('semantic') or {}
+    ast_hits = sorted({f['rule_id'] for f in (scan.get('findings') or []) if str(f['rule_id']).startswith('AST-')})
+    print('    语义样本包 -> %-9s risk=%-3s 第一道(AST)命中: %s' % (
+        scan.get('verdict_cn') or scan.get('verdict'), scan.get('risk_score'), ', '.join(ast_hits) or '无'))
+    print('    意图分析   : 宣称「%s」-> 实际「%s」  偏离=%s' % (
+        sem.get('declared_intent'), sem.get('inferred_intent'), sem.get('intent_divergence')))
+
+    print('[7] GitHub 导入门禁 (先审核, 后下载)')
     st, res = call('GET', '/github/skills/download?repo=DenisSergeevitch/repo-task-proof-loop&ref=main&path=SKILL.md',
                    auth=admin)
     print('    未审核直接下载 -> HTTP %s / gate=%s' % (st, res.get('gate')))
     print('    拒绝原因: %s' % res.get('error'))
 
     line('=')
-    print('演示结束: 恶意/穿越包已阻断, 正常包放行, 动态沙箱真实复现危险行为, 未审核的外部技能禁止下载。')
+    print('演示结束: 三道防线联防 · 恶意/穿越包已阻断, 正常包放行, 沙箱真实复现危险行为, 语义审计识破社工话术与隐藏意图, 未审核外部技能禁止下载。')
     line('=')
     return 0
 
