@@ -34,7 +34,16 @@ func (s *GitHubService) FetchSkillFiles(ctx context.Context, repository, ref, sk
 	var tree githubTreeResponse
 	endpoint := fmt.Sprintf("/repos/%s/git/trees/%s?recursive=1", repo, escapePath(cleanRef))
 	if _, err := s.apiGetJSON(ctx, endpoint, &tree); err != nil {
-		return nil, err
+		// 分支名可能不对 (例如默认分支是 master 但传了 main): 回退到仓库真实默认分支再试一次
+		if def := s.defaultBranch(ctx, repo); def != "" && !strings.EqualFold(def, cleanRef) {
+			endpoint = fmt.Sprintf("/repos/%s/git/trees/%s?recursive=1", repo, escapePath(def))
+			if _, err2 := s.apiGetJSON(ctx, endpoint, &tree); err2 != nil {
+				return nil, err
+			}
+			cleanRef = def
+		} else {
+			return nil, err
+		}
 	}
 	type candidate struct {
 		path string

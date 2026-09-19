@@ -167,40 +167,48 @@ func (s *GitHubService) HostStatus() map[string]interface{} {
 type githubStatsEntry struct {
 	stars   int
 	forks   int
+	branch  string
 	expires time.Time
 }
 
-// RepositoryStats 获取仓库 star/fork 数 (代码搜索不返回 stargazers_count, 需单独查询并缓存)
-func (s *GitHubService) RepositoryStats(ctx context.Context, fullName string) (int, int) {
+// RepositoryStats 获取仓库 star/fork 数与默认分支 (代码搜索不返回这些, 需单独查询并缓存)
+func (s *GitHubService) RepositoryStats(ctx context.Context, fullName string) (int, int, string) {
 	fullName = strings.TrimSpace(fullName)
 	if fullName == "" {
-		return 0, 0
+		return 0, 0, ""
 	}
 	s.statsMu.RLock()
 	entry, ok := s.stats[fullName]
 	s.statsMu.RUnlock()
 	if ok && time.Now().Before(entry.expires) {
-		return entry.stars, entry.forks
+		return entry.stars, entry.forks, entry.branch
 	}
 	var repo struct {
-		StargazersCount int `json:"stargazers_count"`
-		ForksCount      int `json:"forks_count"`
+		StargazersCount int    `json:"stargazers_count"`
+		ForksCount      int    `json:"forks_count"`
+		DefaultBranch   string `json:"default_branch"`
 	}
 	if _, err := s.apiGetJSON(ctx, "/repos/"+fullName, &repo); err != nil {
 		// 失败短缓存, 避免抖动时反复请求
 		s.statsMu.Lock()
 		s.stats[fullName] = githubStatsEntry{expires: time.Now().Add(2 * time.Minute)}
 		s.statsMu.Unlock()
-		return 0, 0
+		return 0, 0, ""
 	}
 	ttl := s.config.CacheTTL
 	if ttl <= 0 {
 		ttl = 30 * time.Minute
 	}
 	s.statsMu.Lock()
-	s.stats[fullName] = githubStatsEntry{stars: repo.StargazersCount, forks: repo.ForksCount, expires: time.Now().Add(ttl)}
+	s.stats[fullName] = githubStatsEntry{stars: repo.StargazersCount, forks: repo.ForksCount, branch: repo.DefaultBranch, expires: time.Now().Add(ttl)}
 	s.statsMu.Unlock()
-	return repo.StargazersCount, repo.ForksCount
+	return repo.StargazersCount, repo.ForksCount, repo.DefaultBranch
+}
+
+// defaultBranch 取仓库默认分支 (缓存于 RepositoryStats)
+func (s *GitHubService) defaultBranch(ctx context.Context, repo string) string {
+	_, _, branch := s.RepositoryStats(ctx, repo)
+	return branch
 }
 
 func normalizeSearchRequest(req *model.GitHubSkillSearchRequest) {

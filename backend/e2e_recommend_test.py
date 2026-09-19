@@ -81,6 +81,8 @@ def main():
         check('GitHub 推荐已执行安全核查', (data.get('verified_count') or 0) > 0, 'verified=%s' % data.get('verified_count'))
         check('GitHub 推荐携带 star 数 (热度排序依据)', any((r.get('stars') or 0) > 0 for r in gh),
               [(r.get('repository'), r.get('stars')) for r in gh][:4])
+        check('GitHub 推荐携带分支 ref (供审查抓包)', all(r.get('ref') for r in gh), [r.get('ref') for r in gh][:3])
+        check('GitHub 推荐携带技能路径 path', all(r.get('path') for r in gh), [r.get('path') for r in gh][:3])
         # 热度优先: 安全(已核查)的应排在未核查/可疑之前
         ranks = [r.get('security_status') for r in gh]
         if 'safe' in ranks and 'unverified' in ranks:

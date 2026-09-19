@@ -474,7 +474,7 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 8)
 	for i := range uniq {
-		if uniq[i].Stars > 0 || uniq[i].Repository == "" {
+		if uniq[i].Repository == "" {
 			continue
 		}
 		wg.Add(1)
@@ -484,8 +484,11 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 			defer func() { <-sem }()
 			sc, cancel := context.WithTimeout(ctx, 12*time.Second)
 			defer cancel()
-			stars, _ := s.github.RepositoryStats(sc, uniq[idx].Repository)
+			stars, _, branch := s.github.RepositoryStats(sc, uniq[idx].Repository)
 			uniq[idx].Stars = stars
+			if branch != "" {
+				uniq[idx].Ref = branch // 用真实默认分支, 避免 main/master 不一致导致后续抓包 404
+			}
 		}(i)
 	}
 	wg.Wait()
