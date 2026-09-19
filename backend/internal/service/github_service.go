@@ -574,7 +574,15 @@ func (s *GitHubService) PreviewSkill(ctx context.Context, repository, ref, skill
 	}
 	content, err := s.fetchRaw(ctx, repository, ref, skillPath, 1<<20)
 	if err != nil {
-		return nil, err
+		// 分支名容错: 默认分支可能是 master 但传入 main 会 404, 回退到真实默认分支
+		if def := s.defaultBranch(ctx, repository); def != "" && !strings.EqualFold(def, ref) {
+			if c2, e2 := s.fetchRaw(ctx, repository, def, skillPath, 1<<20); e2 == nil {
+				content, err, ref = c2, nil, def
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	frontmatter, body := parseSkillDocument(string(content))
 	name := titleCaseSkillName(fallbackString(frontmatter.Name, pathpkg.Base(pathpkg.Dir(skillPath))))
@@ -608,9 +616,19 @@ func (s *GitHubService) BuildArchive(ctx context.Context, repository, ref, skill
 	}
 
 	var tree githubTreeResponse
-	_, err = s.apiGetJSON(ctx, "/repos/"+repository+"/git/trees/"+url.PathEscape(ref)+"?recursive=1", &tree)
+	treeURL := "/repos/" + repository + "/git/trees/" + url.PathEscape(ref) + "?recursive=1"
+	_, err = s.apiGetJSON(ctx, treeURL, &tree)
 	if err != nil {
-		return "", nil, err
+		// 分支名容错: 默认分支可能是 master 但传入 main 会 404, 回退到真实默认分支
+		if def := s.defaultBranch(ctx, repository); def != "" && !strings.EqualFold(def, ref) {
+			treeURL = "/repos/" + repository + "/git/trees/" + url.PathEscape(def) + "?recursive=1"
+			if _, err2 := s.apiGetJSON(ctx, treeURL, &tree); err2 != nil {
+				return "", nil, err
+			}
+			ref = def
+		} else {
+			return "", nil, err
+		}
 	}
 	if tree.Truncated {
 		return "", nil, errors.New("仓库文件树过大，GitHub 返回了截断结果，请前往仓库下载")

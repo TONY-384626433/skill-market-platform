@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, App as AntApp, Button, Empty, Input, Segmented, Skeleton, Space, Tag, Tooltip } from 'antd';
 import {
-  ArrowRightOutlined, BulbOutlined, CheckCircleFilled, DownloadOutlined, ExperimentOutlined,
+  ArrowRightOutlined, BulbOutlined, CheckCircleFilled, CloudDownloadOutlined, DownloadOutlined, ExperimentOutlined,
   GithubOutlined, LinkOutlined, RobotOutlined, SafetyCertificateOutlined, SearchOutlined,
   StarFilled, StopOutlined, ThunderboltOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { getRecommendStatus, recommendSkills, submitImportRequest } from '../services/api';
+import { getGitHubSkillDownloadURL, getRecommendStatus, recommendSkills, submitImportRequest } from '../services/api';
 import SkillVisual from '../components/SkillVisual';
 import { formatNumber } from '../utils/format';
 
@@ -35,13 +35,28 @@ function SecTag({ item }) {
   );
 }
 
+const REVIEW_META = {
+  pending: { color: 'default', text: '待审查' },
+  scanning: { color: 'processing', text: '审查中' },
+  pending_review: { color: 'warning', text: '待人工复核' },
+  approved: { color: 'success', text: '已通过安全审查' },
+  imported: { color: 'cyan', text: '已入库' },
+  blocked: { color: 'error', text: '安全审查已阻断' },
+  rejected: { color: 'default', text: '已驳回' },
+  scan_failed: { color: 'volcano', text: '审查失败(可重试)' },
+};
+
 function ScoreRing({ score }) {
   const tone = score >= 75 ? 'high' : score >= 50 ? 'mid' : 'low';
   return <div className={`reco-score ${tone}`}><strong>{score}</strong><small>匹配度</small></div>;
 }
 
-function RecoCard({ item, onOpen, onPlay, onReview, reviewing }) {
+function RecoCard({ item, onOpen, onPlay, onReview, reviewing, review }) {
   const isGithub = item.source === 'github';
+  const reviewMeta = review ? (REVIEW_META[review.status] || { color: 'default', text: review.status }) : null;
+  const downloadURL = review?.download_allowed
+    ? `${getGitHubSkillDownloadURL(item)}&request_id=${encodeURIComponent(review.id)}`
+    : undefined;
   return (
     <article className="reco-card">
       <div className="reco-card-head">
@@ -64,6 +79,13 @@ function RecoCard({ item, onOpen, onPlay, onReview, reviewing }) {
       {isGithub && item.repository && (
         <div className="reco-card-repo"><GithubOutlined /> <span>{item.repository}</span>{item.path ? <small>{item.path}</small> : null}</div>
       )}
+      {isGithub && review && (
+        <div className="reco-card-review">
+          <Tag color={reviewMeta.color}>{reviewMeta.text}</Tag>
+          {typeof review.risk_score === 'number' && <span className="sec-muted">风险分 {review.risk_score}</span>}
+          {review.review_note && <span className="sec-muted">{review.review_note}</span>}
+        </div>
+      )}
       {!isGithub && <div className="reco-card-tags">{(item.tags || []).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>}
       <footer>
         {isGithub
@@ -73,7 +95,11 @@ function RecoCard({ item, onOpen, onPlay, onReview, reviewing }) {
           {isGithub ? (
             <>
               <Button size="small" icon={<LinkOutlined />} onClick={() => window.open(item.repository_url, '_blank', 'noopener')}>查看仓库</Button>
-              <Button type="primary" size="small" icon={<SafetyCertificateOutlined />} loading={reviewing} onClick={() => onReview(item)}>提交安全审查</Button>
+              {review?.download_allowed ? (
+                <Button type="primary" size="small" icon={<CloudDownloadOutlined />} href={downloadURL}>下载已审通过包</Button>
+              ) : (
+                <Button type="primary" size="small" icon={<SafetyCertificateOutlined />} loading={reviewing} onClick={() => onReview(item)}>{review ? '重新提交审查' : '提交安全审查'}</Button>
+              )}
             </>
           ) : (
             <>
@@ -96,6 +122,7 @@ export default function RecommendPage() {
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState(null);
   const [reviewing, setReviewing] = useState('');
+  const [reviews, setReviews] = useState({});
 
   useEffect(() => { getRecommendStatus().then((res) => setStatus(res?.data || res)).catch(() => {}); }, []);
 
@@ -123,8 +150,10 @@ export default function RecommendPage() {
     try {
       const res = await submitImportRequest(item.repository, item.ref || 'main', item.path || 'SKILL.md', item.repository_url);
       const req = res?.data || res;
-      const statusText = { approved: '通过', pending_review: '待人工复核', blocked: '已阻断', scan_failed: '审查失败(可重试)' }[req?.status] || req?.status;
-      message.success(`已提交安全审查: ${statusText} (风险分 ${req?.risk_score ?? '-'})`);
+      setReviews((prev) => ({ ...prev, [item.skill_id]: req }));
+      const statusText = (REVIEW_META[req?.status] || {}).text || req?.status;
+      if (req?.download_allowed) message.success(`已通过安全审查，可下载（风险分 ${req?.risk_score ?? '-'}）`);
+      else message.success(`已提交安全审查: ${statusText}（风险分 ${req?.risk_score ?? '-'}）`);
     } catch (error) {
       message.error(error.response?.data?.error || '提交审查失败');
     } finally {
@@ -183,7 +212,7 @@ export default function RecommendPage() {
                 {result.github_notice && <div className="sec-muted reco-gh-notice"><GithubOutlined /> {result.github_notice}</div>}
                 <div className="reco-cards">
                   {recs.map((item) => (
-                    <RecoCard key={`${item.source}-${item.skill_id}`} item={item} reviewing={reviewing === item.skill_id}
+                    <RecoCard key={`${item.source}-${item.skill_id}`} item={item} reviewing={reviewing === item.skill_id} review={reviews[item.skill_id]}
                       onOpen={() => navigate(`/skills/${item.skill_id}`)}
                       onPlay={() => navigate(`/skills/${item.skill_id}?tab=playground`)}
                       onReview={submitReview} />

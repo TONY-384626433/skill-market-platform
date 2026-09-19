@@ -1573,3 +1573,5 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .reco-card-repo small { color: #7f93ab; }
 .reco-gh-notice { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .reco-footnote { margin-top: 4px; }
+/* ---------- AI 找技能: 审查状态条 ---------- */
+.reco-card-review { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(53,227,174,.08); font-size: 12.5px; }

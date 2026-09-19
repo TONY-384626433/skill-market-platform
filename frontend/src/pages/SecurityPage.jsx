@@ -379,6 +379,7 @@ export default function SecurityPage() {
       <Space size={4} wrap>
         <Button size="small" icon={<ScanOutlined />} loading={busy === 'scan-' + r.id} onClick={() => act('scan-' + r.id, () => scanImportRequest(r.id))}>重新审查</Button>
         {r.scan_id && <Button size="small" type="link" onClick={() => openScan(r.scan_id)}>报告</Button>}
+        {r.download_allowed && <Button size="small" type="link" icon={<CloudDownloadOutlined />} href={`/api/v1/github/skills/download?repo=${encodeURIComponent(r.repository)}&ref=${encodeURIComponent(r.ref)}&path=${encodeURIComponent(r.skill_path)}&request_id=${encodeURIComponent(r.id)}`}>下载</Button>}
         {(r.status === 'pending_review' || r.status === 'pending') && (
           <>
             <Button size="small" type="primary" icon={<CheckOutlined />} loading={busy === 'ok-' + r.id}
