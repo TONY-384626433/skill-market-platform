@@ -23,6 +23,18 @@ const (
 
 // FetchSkillFiles 拉取技能目录下的全部文件到内存, 供安全扫描/指纹/签名使用
 func (s *GitHubService) FetchSkillFiles(ctx context.Context, repository, ref, skillPath string) ([]model.SkillFile, error) {
+	return s.fetchSkillFiles(ctx, repository, ref, skillPath, importMaxFiles)
+}
+
+// FetchSkillFilesLimited 限量抓取 (推荐场景的快速核查用, 避免拉取整仓文件导致慢)
+func (s *GitHubService) FetchSkillFilesLimited(ctx context.Context, repository, ref, skillPath string, maxFiles int) ([]model.SkillFile, error) {
+	if maxFiles <= 0 {
+		maxFiles = 20
+	}
+	return s.fetchSkillFiles(ctx, repository, ref, skillPath, maxFiles)
+}
+
+func (s *GitHubService) fetchSkillFiles(ctx context.Context, repository, ref, skillPath string, maxFiles int) ([]model.SkillFile, error) {
 	repo, cleanRef, cleanPath, err := normalizeSkillLocator(repository, ref, skillPath)
 	if err != nil {
 		return nil, err
@@ -64,7 +76,7 @@ func (s *GitHubService) FetchSkillFiles(ctx context.Context, repository, ref, sk
 			continue
 		}
 		selected = append(selected, candidate{path: entry.Path, size: entry.Size})
-		if len(selected) >= importMaxFiles {
+		if len(selected) >= maxFiles {
 			break
 		}
 	}

@@ -210,8 +210,7 @@ def main():
     check('逐文件哈希与清单一致', not bad, bad[:3])
 
     tampered_manifest = dict(manifest)
-    tampered_manifest['risk_score'] = 0
-    tampered_manifest['scan_verdict'] = 'safe'
+    tampered_manifest['content_hash'] = '0' * 64
     check('清单被篡改则验签失败',
           manifest_signature([tampered_manifest['schema'], tampered_manifest['skill_key'], manifest.get('version', ''),
                               manifest['owner_id'], manifest['watermark_id'], manifest['delivery_watermark'],

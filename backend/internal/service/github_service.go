@@ -702,7 +702,11 @@ func (s *GitHubService) BuildArchive(ctx context.Context, repository, ref, skill
 	var totalSize int
 	for _, file := range files {
 		if file.err != nil {
-			return "", nil, file.err
+			// 容忍个别文件抓取失败(网络抖动/限流), 跳过并继续; 但 SKILL.md 必须成功
+			if strings.EqualFold(pathpkg.Base(file.path), "SKILL.md") {
+				return "", nil, file.err
+			}
+			continue
 		}
 		totalSize += len(file.data)
 		if totalSize > githubMaxArchiveSize {
@@ -717,6 +721,9 @@ func (s *GitHubService) BuildArchive(ctx context.Context, repository, ref, skill
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	for _, file := range files {
+		if file.err != nil {
+			continue // 跳过抓取失败的文件(完整性由 SKILL.md 保证)
+		}
 		relative := file.path
 		if directory != "" {
 			relative = strings.TrimPrefix(strings.TrimPrefix(file.path, directory), "/")

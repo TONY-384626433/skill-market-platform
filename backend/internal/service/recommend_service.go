@@ -222,14 +222,17 @@ func (s *RecommendService) Recommend(ctx context.Context, query string, opts Rec
 			}
 			for _, g := range ghSkills {
 				rel, matched := relevanceScore(ghScoredQuery, g.Name, strings.Join(g.Tags, " "), g.Category, g.Description, "", "")
+				reason := "匹配关键词：" + strings.Join(matched, "、")
 				if rel <= 0 {
-					continue
+					// GitHub 已按内容命中该需求, 给个基础相关度纳入(排在强匹配之后), 避免“只有几条”
+					rel = 0.15
+					reason = "GitHub 检索命中"
 				}
 				rec := SkillRecommendation{
 					SkillID: g.ID, Name: g.Name, Category: g.Category, Summary: g.Description, Tags: g.Tags,
 					SkillType: g.Format, Source: sourceGitHub, Repository: g.Repository, RepositoryURL: g.RepositoryURL,
 					Path: g.Path, Ref: g.Ref, Stars: g.Stars,
-					Reason: "匹配关键词：" + strings.Join(matched, "、"),
+					Reason: reason,
 				}
 				pool = append(pool, cand{rec: rec, relRaw: rel, popMetric: float64(g.Stars)})
 			}
@@ -373,13 +376,13 @@ func (s *RecommendService) verifyGitHubShortlist(ctx context.Context, items []re
 	if len(idxs) == 0 {
 		return 0
 	}
-	if len(idxs) > 20 { // 控制耗时/配额: 最多核查 20 个 (并行)
-		idxs = idxs[:20]
+	if len(idxs) > 12 { // 控制耗时/配额: 最多核查 12 个 (并行)
+		idxs = idxs[:12]
 	}
 	var mu sync.Mutex
 	verified := 0
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 8)
+	sem := make(chan struct{}, 6)
 	for _, idx := range idxs {
 		wg.Add(1)
 		sem <- struct{}{}
@@ -388,7 +391,7 @@ func (s *RecommendService) verifyGitHubShortlist(ctx context.Context, items []re
 			defer func() { <-sem }()
 			repo, ref, path := items[i].rec.Repository, items[i].rec.Ref, items[i].rec.Path
 			cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			files, err := s.github.FetchSkillFiles(cctx, repo, ref, path)
+			files, err := s.github.FetchSkillFilesLimited(cctx, repo, ref, path, 20)
 			if err != nil || len(files) == 0 {
 				cancel()
 				mu.Lock()
@@ -487,10 +490,13 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 	var notice string
 	var lastErr error
 	for i, gq := range variants {
-		if i >= 3 { // 代码搜索有频率限制(30/分), 最多 3 路
+		if i >= 2 { // 代码搜索配额紧(10/分), 最多 2 路
 			break
 		}
-		req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 40}
+		if i == 1 && len(out) >= 20 { // 第一路已够, 不再消耗配额
+			break
+		}
+		req := &model.GitHubSkillSearchRequest{Query: gq, Page: 1, PageSize: 30}
 		cctx, cancel := context.WithTimeout(ctx, 18*time.Second)
 		res, err := s.github.Search(cctx, req)
 		cancel()
@@ -522,8 +528,8 @@ func (s *RecommendService) gitHubCandidates(ctx context.Context, query string) (
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 16)
 	limit := len(out)
-	if limit > 60 {
-		limit = 60
+	if limit > 30 {
+		limit = 30
 	}
 	for i := 0; i < limit; i++ {
 		if out[i].Repository == "" {
