@@ -67,9 +67,11 @@ func main() {
 	skillSvc := service.NewSkillService(db, cfg)
 	auditSvc := service.NewAuditService(db, cfg)
 	agentSvc := service.NewAgentService(db, cfg, skillSvc)
+	recommendSvc := service.NewRecommendService(db, cfg)
 	skillHandler := handler.NewSkillHandler(skillSvc)
 	auditHandler := handler.NewAuditHandler(auditSvc, skillSvc)
 	agentHandler := handler.NewAgentHandler(agentSvc)
+	recommendHandler := handler.NewRecommendHandler(recommendSvc)
 	gatewayHandler := handler.NewGatewayHandler(skillSvc, cfg)
 	githubService := service.NewGitHubService(cfg.GitHub)
 	githubHandler := handler.NewGitHubHandler(githubService)
@@ -458,6 +460,8 @@ func main() {
 		auth.GET("/agent/status", agentHandler.Status)
 		auth.GET("/agent/tools", agentHandler.ListTools)
 		auth.POST("/agent/chat", agentHandler.Chat)
+		auth.POST("/agent/recommend", recommendHandler.Recommend)
+		auth.GET("/agent/recommend/status", recommendHandler.Status)
 
 		// GitHub 技能导入门禁: 提交安全审查 (先审核, 后下载) / 查询审查单
 		auth.POST("/github/import-requests", securityHandler.SubmitImportRequest)

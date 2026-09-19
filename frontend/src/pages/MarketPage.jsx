@@ -3,7 +3,7 @@ import { App as AntApp, Button, Empty, Input, Segmented, Select, Skeleton, Tag, 
 import {
   ApiOutlined, AppstoreOutlined, ArrowRightOutlined, BankOutlined, CheckCircleFilled, CodeOutlined,
   DownloadOutlined, GithubOutlined, HeartFilled, HeartOutlined, PlusOutlined, PlayCircleOutlined,
-  ReloadOutlined, SafetyCertificateOutlined, SearchOutlined, StarFilled,
+  ReloadOutlined, RobotOutlined, SafetyCertificateOutlined, SearchOutlined, StarFilled,
   ThunderboltOutlined, UnorderedListOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -151,6 +151,7 @@ export default function MarketPage() {
             <Button type="primary" size="large" icon={source === 'github' ? <GithubOutlined /> : <SearchOutlined />} onClick={triggerSearch}>{source === 'github' ? '搜索 GitHub' : '搜索能力'}</Button>
           </div>
           <div className="search-suggestions"><span>{source === 'github' ? '开源热搜' : '热门能力'}</span>{activeSuggestions.map((item) => <button key={item} type="button" onClick={() => updateFilter('query', item)}>{item}</button>)}</div>
+          <button className="market-ai-finder" type="button" onClick={() => navigate('/recommend')}><RobotOutlined /> 不知道用哪个？让 AI 帮你找技能 <ArrowRightOutlined /></button>
         </div>
         <div className="capability-radar" aria-hidden="true">
           <div className="radar-ring ring-one" /><div className="radar-ring ring-two" /><div className="radar-axis axis-one" /><div className="radar-axis axis-two" />

@@ -1521,3 +1521,47 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .sec-semantic-tab { display: flex; flex-direction: column; gap: 12px; }
 .sec-semantic-tab .sec-semantic-actions { margin-top: 2px; }
 .sec-semantic-desc { margin-top: 2px; }
+/* ---------- AI 找技能 (技能推荐 Agent) ---------- */
+.market-ai-finder { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border: 1px solid rgba(78,226,255,.42); border-radius: 999px; background: linear-gradient(120deg, rgba(57,217,255,.14), rgba(185,140,255,.14)); color: #cfeeff; font-weight: 600; cursor: pointer; transition: all .2s ease; }
+.market-ai-finder:hover { border-color: #4ee2ff; box-shadow: 0 0 20px rgba(65,220,255,.28); color: #eaf6ff; }
+.market-ai-finder .anticon { color: #4ee2ff; }
+
+.reco-page { display: flex; flex-direction: column; gap: 18px; }
+.reco-hero { padding: 26px 28px; border: 1px solid #1d344f; border-radius: 14px; background: radial-gradient(120% 140% at 15% 0%, rgba(57,217,255,.12), rgba(8,16,28,.3) 60%), rgba(8,16,28,.72); }
+.reco-kicker { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .14em; color: #7fd8ff; }
+.reco-kicker .anticon { color: #4ee2ff; }
+.reco-hero h1 { margin: 12px 0 8px; font-size: 26px; color: #eaf6ff; }
+.reco-hero p { margin: 0 0 12px; color: #9fb6cd; max-width: 760px; line-height: 1.6; }
+.reco-input { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; }
+.reco-input .ant-input-textarea { flex: 1; }
+.reco-input .ant-btn { height: 42px; }
+.reco-examples { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; color: #7f93ab; }
+.reco-examples button { padding: 4px 12px; border: 1px solid #24405e; border-radius: 999px; background: rgba(13,26,44,.7); color: #b8cde2; cursor: pointer; }
+.reco-examples button:hover { border-color: #4ee2ff; color: #eaf6ff; }
+
+.reco-result { display: flex; flex-direction: column; gap: 14px; }
+.reco-result-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.reco-result-head strong { color: #eaf6ff; }
+.reco-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.reco-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid #1d344f; border-radius: 12px; background: linear-gradient(160deg, rgba(11,22,38,.9), rgba(8,16,28,.75)); }
+.reco-card-head { display: flex; gap: 12px; align-items: flex-start; }
+.reco-card-title { flex: 1; min-width: 0; }
+.reco-card-title h3 { margin: 0 0 6px; color: #eaf6ff; font-size: 16px; }
+.reco-card-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.reco-card-summary { margin: 0; color: #b8cde2; font-size: 13px; line-height: 1.55; }
+.reco-card-reason { display: flex; gap: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(57,217,255,.08); color: #bfe6ff; font-size: 12.5px; }
+.reco-card-reason .anticon { color: #4ee2ff; margin-top: 2px; }
+.reco-card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.reco-card-tags span { padding: 2px 8px; border: 1px solid #24405e; border-radius: 6px; font-size: 11.5px; color: #9fb6cd; }
+.reco-card footer { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; color: #91a5bc; font-size: 12px; margin-top: auto; }
+.reco-card-actions { margin-left: auto; display: flex; gap: 8px; }
+.reco-score { flex: none; width: 62px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px; border-radius: 10px; border: 1px solid #24405e; background: rgba(13,26,44,.7); }
+.reco-score strong { font-size: 22px; line-height: 1; color: #4ee2ff; }
+.reco-score small { font-size: 11px; color: #7f93ab; }
+.reco-score.high strong { color: #35e3ae; }
+.reco-score.mid strong { color: #ffbd62; }
+.reco-score.low strong { color: #91a5bc; }
+.reco-interpret { margin: 0; }
+.reco-empty, .reco-loading { padding: 10px; }
+.reco-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.reco-hint-tag { cursor: pointer; }
