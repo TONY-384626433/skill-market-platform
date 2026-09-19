@@ -1565,3 +1565,11 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .reco-empty, .reco-loading { padding: 10px; }
 .reco-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .reco-hint-tag { cursor: pointer; }
+/* ---------- AI 找技能: 跨源控件/仓库/脚注 ---------- */
+.reco-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.reco-card-repo { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px dashed #24405e; border-radius: 8px; color: #b8cde2; font-size: 12.5px; }
+.reco-card-repo .anticon { color: #9fb6cd; }
+.reco-card-repo span { color: #eaf4ff; }
+.reco-card-repo small { color: #7f93ab; }
+.reco-gh-notice { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.reco-footnote { margin-top: 4px; }

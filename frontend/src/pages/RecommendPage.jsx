@@ -1,32 +1,47 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, App as AntApp, Button, Empty, Input, Skeleton, Space, Tag, Tooltip } from 'antd';
+import { Alert, App as AntApp, Button, Empty, Input, Segmented, Skeleton, Space, Tag, Tooltip } from 'antd';
 import {
   ArrowRightOutlined, BulbOutlined, CheckCircleFilled, DownloadOutlined, ExperimentOutlined,
-  RobotOutlined, SearchOutlined, StarFilled, ThunderboltOutlined,
+  GithubOutlined, LinkOutlined, RobotOutlined, SafetyCertificateOutlined, SearchOutlined,
+  StarFilled, StopOutlined, ThunderboltOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { getRecommendStatus, recommendSkills } from '../services/api';
+import { getRecommendStatus, recommendSkills, submitImportRequest } from '../services/api';
 import SkillVisual from '../components/SkillVisual';
 import { formatNumber } from '../utils/format';
 
 const EXAMPLES = [
   '把生产日志里的身份证和手机号脱敏',
   '核心数据库跑不动了，想看看健康状况和慢查询',
-  '把这段业务需求整理成 PRD 要点',
-  '分析支付节点最近的告警噪声',
+  '翻译一篇 PDF 文档',
+  'data analysis of sales csv',
 ];
 
-function ScoreRing({ score }) {
-  const tone = score >= 75 ? 'high' : score >= 50 ? 'mid' : 'low';
+const SEC_META = {
+  safe: { color: 'success', text: '安全(已核查)', icon: CheckCircleFilled },
+  suspicious: { color: 'warning', text: '可疑(已核查)', icon: WarningOutlined },
+  unverified: { color: 'default', text: '未核查', icon: StopOutlined },
+  malicious: { color: 'error', text: '恶意', icon: StopOutlined },
+};
+
+function SecTag({ item }) {
+  if (item.source !== 'github') return null;
+  const meta = SEC_META[item.security_status] || SEC_META.unverified;
+  const Icon = meta.icon;
   return (
-    <div className={`reco-score ${tone}`}>
-      <strong>{score}</strong>
-      <small>匹配度</small>
-    </div>
+    <Tooltip title={item.security_summary || (item.security_status === 'unverified' ? '未能抓取技能包，未完成安全核查' : '推荐前已做静态查毒 + 语义审计')}>
+      <Tag color={meta.color} icon={<Icon />}>{meta.text}</Tag>
+    </Tooltip>
   );
 }
 
-function RecoCard({ item, onOpen, onPlay }) {
+function ScoreRing({ score }) {
+  const tone = score >= 75 ? 'high' : score >= 50 ? 'mid' : 'low';
+  return <div className={`reco-score ${tone}`}><strong>{score}</strong><small>匹配度</small></div>;
+}
+
+function RecoCard({ item, onOpen, onPlay, onReview, reviewing }) {
+  const isGithub = item.source === 'github';
   return (
     <article className="reco-card">
       <div className="reco-card-head">
@@ -34,22 +49,38 @@ function RecoCard({ item, onOpen, onPlay }) {
         <div className="reco-card-title">
           <h3>{item.name}</h3>
           <div className="reco-card-meta">
+            {isGithub
+              ? <Tag color="black" icon={<GithubOutlined />}>GitHub</Tag>
+              : <Tag color="geekblue" icon={<SafetyCertificateOutlined />}>企业库</Tag>}
             <Tag>{item.category}</Tag>
             {item.skill_type && <Tag color="blue">{item.skill_type}</Tag>}
-            {item.security_status === 'safe' && <Tag color="success" icon={<CheckCircleFilled />}>安全</Tag>}
+            <SecTag item={item} />
           </div>
         </div>
         <ScoreRing score={item.match_score || 0} />
       </div>
       {item.summary && <p className="reco-card-summary">{item.summary}</p>}
       {item.reason && <div className="reco-card-reason"><BulbOutlined /> {item.reason}</div>}
-      <div className="reco-card-tags">{(item.tags || []).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>
+      {isGithub && item.repository && (
+        <div className="reco-card-repo"><GithubOutlined /> <span>{item.repository}</span>{item.path ? <small>{item.path}</small> : null}</div>
+      )}
+      {!isGithub && <div className="reco-card-tags">{(item.tags || []).slice(0, 5).map((t) => <span key={t}>{t}</span>)}</div>}
       <footer>
-        <span><DownloadOutlined /> {formatNumber(item.install_count)}</span>
-        <span><StarFilled className="rating-star" /> {Number(item.rating_avg || 0).toFixed(1)}</span>
+        {isGithub
+          ? <span><StarFilled className="rating-star" /> {formatNumber(item.stars || 0)} star</span>
+          : <><span><DownloadOutlined /> {formatNumber(item.install_count)}</span><span><StarFilled className="rating-star" /> {Number(item.rating_avg || 0).toFixed(1)}</span></>}
         <div className="reco-card-actions">
-          <Button size="small" icon={<ExperimentOutlined />} onClick={() => onPlay(item)}>在线试玩</Button>
-          <Button type="primary" size="small" icon={<ArrowRightOutlined />} onClick={() => onOpen(item)}>查看详情</Button>
+          {isGithub ? (
+            <>
+              <Button size="small" icon={<LinkOutlined />} onClick={() => window.open(item.repository_url, '_blank', 'noopener')}>查看仓库</Button>
+              <Button type="primary" size="small" icon={<SafetyCertificateOutlined />} loading={reviewing} onClick={() => onReview(item)}>提交安全审查</Button>
+            </>
+          ) : (
+            <>
+              <Button size="small" icon={<ExperimentOutlined />} onClick={() => onPlay(item)}>在线试玩</Button>
+              <Button type="primary" size="small" icon={<ArrowRightOutlined />} onClick={() => onOpen(item)}>查看详情</Button>
+            </>
+          )}
         </div>
       </footer>
     </article>
@@ -60,18 +91,23 @@ export default function RecommendPage() {
   const { message } = AntApp.useApp();
   const navigate = useNavigate();
   const [text, setText] = useState('');
+  const [source, setSource] = useState('all');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [status, setStatus] = useState(null);
+  const [reviewing, setReviewing] = useState('');
 
   useEffect(() => { getRecommendStatus().then((res) => setStatus(res?.data || res)).catch(() => {}); }, []);
 
-  const run = useCallback(async (value) => {
+  const run = useCallback(async (value, src) => {
     const query = (value ?? text).trim();
     if (!query) { message.warning('先说说你的需求'); return; }
     setLoading(true);
     try {
-      const res = await recommendSkills(query);
+      const useSource = src ?? source;
+      const opts = { top_n: 5, verify_security: true };
+      if (useSource !== 'all') opts.sources = [useSource];
+      const res = await recommendSkills(query, opts);
       const data = res?.data || res;
       setResult(data);
       if ((data?.recommendations || []).length === 0) message.info('没有特别匹配的技能，换个说法试试');
@@ -80,7 +116,21 @@ export default function RecommendPage() {
     } finally {
       setLoading(false);
     }
-  }, [message, text]);
+  }, [message, source, text]);
+
+  const submitReview = useCallback(async (item) => {
+    setReviewing(item.skill_id);
+    try {
+      const res = await submitImportRequest(item.repository, item.ref || 'main', item.path || 'SKILL.md', item.repository_url);
+      const req = res?.data || res;
+      const statusText = { approved: '通过', pending_review: '待人工复核', blocked: '已阻断', scan_failed: '审查失败(可重试)' }[req?.status] || req?.status;
+      message.success(`已提交安全审查: ${statusText} (风险分 ${req?.risk_score ?? '-'})`);
+    } catch (error) {
+      message.error(error.response?.data?.error || '提交审查失败');
+    } finally {
+      setReviewing('');
+    }
+  }, [message]);
 
   const mode = status?.mode;
   const recs = result?.recommendations || [];
@@ -90,17 +140,24 @@ export default function RecommendPage() {
       <header className="reco-hero">
         <div className="reco-kicker"><RobotOutlined /> SKILL RECOMMENDATION AGENT</div>
         <h1>说说你的需求，AI 帮你找技能</h1>
-        <p>不用记住技能名字。用一句话描述你要做的事，推荐 Agent 会读懂需求，从平台已发布技能中挑出最合适的并说明理由。</p>
-        {mode && (
-          <Tooltip title={status?.notice || ''}>
-            <Tag color={mode === 'llm' ? 'geekblue' : 'cyan'} icon={<ThunderboltOutlined />}>
-              {mode === 'llm' ? `大模型推荐 · ${status?.model || ''}` : '本地检索推荐（配置 LLM_API_KEY 可升级）'}
-            </Tag>
-          </Tooltip>
-        )}
+        <p>跨源推荐：<b>企业审核库 + GitHub 开源</b>。GitHub 技能推荐前先核查安全性；同等条件下优先推荐 star 多、下载/安装多的技能。</p>
+        <div className="reco-controls">
+          <Segmented value={source} onChange={setSource} options={[
+            { label: '全部来源', value: 'all' },
+            { label: <span><SafetyCertificateOutlined /> 企业库</span>, value: 'internal' },
+            { label: <span><GithubOutlined /> GitHub</span>, value: 'github' },
+          ]} />
+          {mode && (
+            <Tooltip title={status?.notice || ''}>
+              <Tag color={mode === 'llm' ? 'geekblue' : 'cyan'} icon={<ThunderboltOutlined />}>
+                {mode === 'llm' ? `大模型推荐 · ${status?.model || ''}` : '本地检索推荐'}
+              </Tag>
+            </Tooltip>
+          )}
+        </div>
         <div className="reco-input">
           <Input.TextArea rows={3} value={text} onChange={(e) => setText(e.target.value)}
-            placeholder="例如：把生产日志里的身份证和手机号脱敏；或：核心数据库跑不动了想看看慢查询…"
+            placeholder="例如：把生产日志里的身份证和手机号脱敏；或：data analysis of sales csv…"
             onPressEnter={(e) => { if (!e.shiftKey) { e.preventDefault(); run(); } }} maxLength={500} showCount />
           <Button type="primary" size="large" icon={<SearchOutlined />} loading={loading} onClick={() => run()}>帮我找技能</Button>
         </div>
@@ -115,22 +172,25 @@ export default function RecommendPage() {
         {!loading && result && (
           <>
             {result.interpretation && (
-              <Alert className="reco-interpret" type="info" showIcon icon={<BulbOutlined />}
-                message="需求理解" description={result.interpretation} />
+              <Alert className="reco-interpret" type="info" showIcon icon={<BulbOutlined />} message="需求理解" description={result.interpretation} />
             )}
             {recs.length > 0 ? (
               <>
                 <div className="reco-result-head">
                   <strong>为你推荐 {recs.length} 个技能</strong>
-                  <span className="sec-muted">引擎 {result.engine} · 候选 {result.candidate_count} 个 · 耗时 {result.duration_ms} ms</span>
+                  <span className="sec-muted">引擎 {result.engine} · 候选 {result.candidate_count} · 已核查 {result.verified_count || 0} · 耗时 {result.duration_ms} ms</span>
                 </div>
+                {result.github_notice && <div className="sec-muted reco-gh-notice"><GithubOutlined /> {result.github_notice}</div>}
                 <div className="reco-cards">
                   {recs.map((item) => (
-                    <RecoCard key={item.skill_id} item={item}
+                    <RecoCard key={`${item.source}-${item.skill_id}`} item={item} reviewing={reviewing === item.skill_id}
                       onOpen={() => navigate(`/skills/${item.skill_id}`)}
-                      onPlay={() => navigate(`/skills/${item.skill_id}?tab=playground`)} />
+                      onPlay={() => navigate(`/skills/${item.skill_id}?tab=playground`)}
+                      onReview={submitReview} />
                   ))}
                 </div>
+                <Alert type="info" showIcon className="reco-footnote"
+                  message="GitHub 技能来自公开来源，需先通过安全审查（先审核后下载）才能接入企业库使用；推荐结果中的安全结论为快速核查，正式接入仍走完整审查。" />
               </>
             ) : (
               <div className="reco-empty">

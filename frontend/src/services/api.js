@@ -79,7 +79,7 @@ export const sendAgentMessage = (text, history) => api.post('/agent/chat', { mes
 
 // 技能推荐 Agent (需求 → 推荐技能)
 export const getRecommendStatus = () => api.get('/agent/recommend/status');
-export const recommendSkills = (message, topN) => api.post('/agent/recommend', { message, top_n: topN }, { timeout: 120000 });
+export const recommendSkills = (message, opts = {}) => api.post('/agent/recommend', { message, ...opts }, { timeout: 150000 });
 
 // ---------- 技能安全治理 (查毒 / 防盗用溯源 / 导入门禁) ----------
 export const getSecurityRules = () => api.get('/security/rules');

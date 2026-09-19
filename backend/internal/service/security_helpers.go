@@ -332,6 +332,24 @@ func (s *SecurityService) ScanUploadedPackage(ctx context.Context, filename stri
 	return s.runScan(ctx, subject, files)
 }
 
+// QuickScan 对外部文件集做「快速安全审查」: 静态规则 + AST/语义 + AI 语义审计。
+//   - 用于「推荐 Agent」在推荐 GitHub 技能前先核查安全性;
+//   - 不跑沙箱、不落库 (推荐场景要求快, 深度验证仍走正式审查)。
+func (s *SecurityService) QuickScan(ctx context.Context, subject sec.ScanSubject, files []model.SkillFile) *model.SecurityScan {
+	scan := sec.ScanFiles(subject, files)
+	scan.ContentHash = sec.ContentHash(files)
+	scan.SimHashHex = sec.SimHashHex(files)
+	scan.EngineVersion = sec.EngineVersion()
+	if s.semantic != nil {
+		report := s.semantic.Audit(ctx, subject, files, scan.Facts)
+		scan.Semantic = report
+		if len(report.Findings) > 0 {
+			sec.MergeFindings(scan, report.Findings)
+		}
+	}
+	return scan
+}
+
 // SemanticAuditSkill 对已入库技能单独跑一次第三道防线 (AI 语义审计)
 func (s *SecurityService) SemanticAuditSkill(ctx context.Context, skillID string) (*model.SemanticAuditReport, error) {
 	files, _, err := s.SkillFiles(skillID, "")

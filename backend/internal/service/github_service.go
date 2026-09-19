@@ -51,6 +51,8 @@ type GitHubService struct {
 	host    model.GitHubHostProfile
 	cacheMu sync.RWMutex
 	cache   map[string]githubCacheEntry
+	statsMu sync.RWMutex
+	stats   map[string]githubStatsEntry
 }
 
 type githubOwner struct {
@@ -119,6 +121,7 @@ func NewGitHubService(cfg config.GitHubConfig) *GitHubService {
 		config: cfg,
 		host:   detectHostProfile(),
 		cache:  make(map[string]githubCacheEntry),
+		stats:  make(map[string]githubStatsEntry),
 	}
 }
 
@@ -159,6 +162,45 @@ func (s *GitHubService) HostStatus() map[string]interface{} {
 		"source":        "GitHub Code Search",
 		"search_cap":    githubSearchCap,
 	}
+}
+
+type githubStatsEntry struct {
+	stars   int
+	forks   int
+	expires time.Time
+}
+
+// RepositoryStats 获取仓库 star/fork 数 (代码搜索不返回 stargazers_count, 需单独查询并缓存)
+func (s *GitHubService) RepositoryStats(ctx context.Context, fullName string) (int, int) {
+	fullName = strings.TrimSpace(fullName)
+	if fullName == "" {
+		return 0, 0
+	}
+	s.statsMu.RLock()
+	entry, ok := s.stats[fullName]
+	s.statsMu.RUnlock()
+	if ok && time.Now().Before(entry.expires) {
+		return entry.stars, entry.forks
+	}
+	var repo struct {
+		StargazersCount int `json:"stargazers_count"`
+		ForksCount      int `json:"forks_count"`
+	}
+	if _, err := s.apiGetJSON(ctx, "/repos/"+fullName, &repo); err != nil {
+		// 失败短缓存, 避免抖动时反复请求
+		s.statsMu.Lock()
+		s.stats[fullName] = githubStatsEntry{expires: time.Now().Add(2 * time.Minute)}
+		s.statsMu.Unlock()
+		return 0, 0
+	}
+	ttl := s.config.CacheTTL
+	if ttl <= 0 {
+		ttl = 30 * time.Minute
+	}
+	s.statsMu.Lock()
+	s.stats[fullName] = githubStatsEntry{stars: repo.StargazersCount, forks: repo.ForksCount, expires: time.Now().Add(ttl)}
+	s.statsMu.Unlock()
+	return repo.StargazersCount, repo.ForksCount
 }
 
 func normalizeSearchRequest(req *model.GitHubSkillSearchRequest) {
