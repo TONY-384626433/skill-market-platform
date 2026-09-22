@@ -23,9 +23,23 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 java -jar dist\SkillHubDesktop.jar
 ```
 
+## 打成 Windows 软件（jpackage）
+
+```powershell
+# 免安装版（app-image，自带精简 JRE）+ .exe 安装包（需 WiX 3.x 的 candle/light 在 PATH）
+powershell -ExecutionPolicy Bypass -File package-software.ps1
+```
+
+产物：
+- `release\SkillHub\SkillHub.exe` —— 免安装独立软件（约 75 MB，含运行时）
+- `release-installer\SkillHub-1.0.0.exe` —— 带安装向导的安装包（开始菜单 + 桌面快捷方式，免管理员安装）
+
+> WiX 未装时脚本会自动跳过安装包、只出免安装版。
+
 ## 环境要求
 
 - JDK 17+（本机已装 Microsoft OpenJDK 21，`JAVA_HOME` 已配置）
+- 打包安装包：WiX Toolset 3.x（`candle.exe` / `light.exe`）
 
 ## 目录
 
