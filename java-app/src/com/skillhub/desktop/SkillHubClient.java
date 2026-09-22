@@ -24,6 +24,7 @@ public class SkillHubClient {
     private String token;
     private String username;
     private String role;
+    private String preferredProvider = "";
 
     public SkillHubClient(String base) { setBase(base); }
 
@@ -38,6 +39,8 @@ public class SkillHubClient {
     public boolean isLoggedIn() { return token != null && !token.isEmpty(); }
     public String getUsername() { return username; }
     public String getRole() { return role; }
+    public void setPreferredProvider(String k) { this.preferredProvider = k == null ? "" : k.trim(); }
+    public String getPreferredProvider() { return preferredProvider; }
     public void logout() { token = null; username = null; role = null; }
 
     private static String enc(String v) {
@@ -124,9 +127,18 @@ public class SkillHubClient {
         return Json.asObject(Json.parse(get("/agent/status")));
     }
 
+    /** 大模型厂商列表 (需登录) */
+    public java.util.List<Object> listProviders() throws Exception {
+        Map<String, Object> root = Json.asObject(Json.parse(get("/agent/providers")));
+        return Json.asArray(root.get("data"));
+    }
+
     /** history 元素: {"role":"user|assistant","content":"..."} */
     public Map<String, Object> agentChat(String message, List<Map<String, String>> history) throws Exception {
         StringBuilder sb = new StringBuilder("{\"message\":\"").append(esc(message)).append("\"");
+        if (preferredProvider != null && !preferredProvider.isEmpty()) {
+            sb.append(",\"provider\":\"").append(esc(preferredProvider)).append("\"");
+        }
         if (history != null && !history.isEmpty()) {
             sb.append(",\"history\":[");
             for (int i = 0; i < history.size(); i++) {

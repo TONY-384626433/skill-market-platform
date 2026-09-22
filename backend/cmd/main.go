@@ -459,6 +459,7 @@ func main() {
 		// AI 智能体 (自然语言编排技能)
 		auth.GET("/agent/status", agentHandler.Status)
 		auth.GET("/agent/tools", agentHandler.ListTools)
+		auth.GET("/agent/providers", agentHandler.Providers)
 		auth.POST("/agent/chat", agentHandler.Chat)
 		auth.POST("/agent/recommend", recommendHandler.Recommend)
 		auth.GET("/agent/recommend/status", recommendHandler.Status)

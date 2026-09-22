@@ -1,13 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"regexp"
 	"sort"
 	"strings"
@@ -149,6 +146,11 @@ func agentToolName(skillKey, tool string) string {
 
 // Chat 处理一次智能体对话
 func (s *AgentService) Chat(ctx context.Context, userID, message string, history []model.AgentMessage) (*model.AgentAnswer, error) {
+	return s.ChatWithProvider(ctx, userID, message, history, "")
+}
+
+// ChatWithProvider 同 Chat, 但可指定大模型厂商 (deepseek/kimi/openai/claude/ark/qwen/zhipu/custom)
+func (s *AgentService) ChatWithProvider(ctx context.Context, userID, message string, history []model.AgentMessage, provider string) (*model.AgentAnswer, error) {
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return nil, fmt.Errorf("请输入内容")
@@ -163,6 +165,7 @@ func (s *AgentService) Chat(ctx context.Context, userID, message string, history
 		return nil, fmt.Errorf("当前没有可用技能 (需已发布且通过可用性审核)")
 	}
 
+	active, activeOK := s.activeProvider(provider)
 	answer := &model.AgentAnswer{
 		SessionID: fmt.Sprintf("ag_%x", time.Now().UnixNano()),
 		Question:  message,
@@ -171,15 +174,15 @@ func (s *AgentService) Chat(ctx context.Context, userID, message string, history
 		Steps:     []model.AgentStep{},
 		Engine:    agentEngineVersion,
 	}
-	if s.llmEnabled() {
+	if activeOK {
 		answer.Provider = "llm"
-		answer.Model = s.cfg.LLM.Model
+		answer.Model = active.Model
 	}
 
 	var steps []model.AgentStep
 	var text string
-	if s.llmEnabled() {
-		text, steps, err = s.chatWithLLM(ctx, userID, message, history, tools)
+	if activeOK {
+		text, steps, err = s.chatWithLLM(ctx, userID, message, history, tools, provider)
 		if err != nil {
 			// 大模型不可用时降级, 保证演示不中断
 			answer.Fallback = true
@@ -204,7 +207,8 @@ func (s *AgentService) Chat(ctx context.Context, userID, message string, history
 }
 
 func (s *AgentService) llmEnabled() bool {
-	return strings.TrimSpace(s.cfg.LLM.APIKey) != "" && strings.TrimSpace(s.cfg.LLM.APIBase) != ""
+	_, ok := s.activeProvider("")
+	return ok
 }
 
 // Status 智能体运行状态
@@ -216,19 +220,31 @@ func (s *AgentService) Status(ctx context.Context) map[string]interface{} {
 	}
 	mode := "local-intent"
 	model := "intent-router-v1"
-	if s.llmEnabled() {
+	apiBase := ""
+	activeKey := ""
+	activeLabel := ""
+	if p, ok := s.activeProvider(""); ok {
 		mode = "llm"
-		model = s.cfg.LLM.Model
+		model = p.Model
+		apiBase = p.APIBase
+		activeKey = p.Key
+		activeLabel = p.Label
 	}
-	return map[string]interface{}{
-		"mode":           mode,
-		"model":          model,
-		"api_base":       s.cfg.LLM.APIBase,
-		"tool_count":     len(tools),
-		"skill_count":    len(skills),
-		"engine_version": agentEngineVersion,
-		"max_rounds":     agentMaxRounds,
+	out := map[string]interface{}{
+		"mode":            mode,
+		"model":           model,
+		"api_base":        apiBase,
+		"active_provider": activeKey,
+		"active_label":    activeLabel,
+		"tool_count":      len(tools),
+		"skill_count":     len(skills),
+		"engine_version":  agentEngineVersion,
+		"max_rounds":      agentMaxRounds,
 	}
+	for k, v := range s.ProviderSummary() {
+		out[k] = v
+	}
+	return out
 }
 
 // ============================================================
@@ -270,7 +286,7 @@ type llmResponse struct {
 	} `json:"error"`
 }
 
-func (s *AgentService) chatWithLLM(ctx context.Context, userID, message string, history []model.AgentMessage, tools []model.AgentTool) (string, []model.AgentStep, error) {
+func (s *AgentService) chatWithLLM(ctx context.Context, userID, message string, history []model.AgentMessage, tools []model.AgentTool, provider string) (string, []model.AgentStep, error) {
 	specs := make([]interface{}, 0, len(tools))
 	for _, t := range tools {
 		params := t.InputSchema
@@ -302,7 +318,7 @@ func (s *AgentService) chatWithLLM(ctx context.Context, userID, message string, 
 
 	steps := make([]model.AgentStep, 0)
 	for round := 0; round < agentMaxRounds; round++ {
-		resp, err := s.callLLM(ctx, llmRequest{Model: s.cfg.LLM.Model, Messages: msgs, Tools: specs, ToolChoice: "auto", Temperature: 0.2})
+		resp, err := s.callLLM(ctx, llmRequest{Model: s.cfg.LLM.Model, Messages: msgs, Tools: specs, ToolChoice: "auto", Temperature: 0.2}, provider)
 		if err != nil {
 			return "", steps, err
 		}
@@ -340,39 +356,12 @@ func (s *AgentService) chatWithLLM(ctx context.Context, userID, message string, 
 	return "已达到最大工具调用轮次, 以下是已获取的信息。", steps, nil
 }
 
-func (s *AgentService) callLLM(ctx context.Context, req llmRequest) (*llmResponse, error) {
-	body, _ := json.Marshal(req)
-	url := strings.TrimRight(s.cfg.LLM.APIBase, "/") + "/chat/completions"
-	reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+func (s *AgentService) callLLM(ctx context.Context, req llmRequest, provider string) (*llmResponse, error) {
+	p, ok := s.activeProvider(provider)
+	if !ok {
+		return nil, fmt.Errorf("未配置任何大模型 API Key (可设置 DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY 等)")
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+s.cfg.LLM.APIKey)
-
-	resp, err := http.DefaultClient.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("大模型服务不可达: %v", err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("大模型返回 HTTP %d: %s", resp.StatusCode, truncate(string(raw), 200))
-	}
-	var out llmResponse
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("大模型响应解析失败: %v", err)
-	}
-	if out.Error != nil {
-		return nil, fmt.Errorf("大模型错误: %s", out.Error.Message)
-	}
-	return &out, nil
+	return s.callProvider(ctx, p, req)
 }
 
 func contentText(c interface{}) string {

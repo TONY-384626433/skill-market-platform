@@ -32,6 +32,9 @@ public class ChatPanel extends JPanel {
     private final JLabel chatTitle = new JLabel();
     private final JLabel chatSub = new JLabel();
     private final JButton authBtn = new JButton("登录 Agent");
+    private final JComboBox<String> providerBox = new JComboBox<>();
+    private final java.util.List<String> providerKeys = new ArrayList<>();
+    private boolean updatingProviders = false;
     private Runnable onLoginRequested;
 
     /** 每个会话独立保存消息: role(text) -> "me"/"ai" */
@@ -146,8 +149,17 @@ public class ChatPanel extends JPanel {
         authBtn.setFocusPainted(false);
         authBtn.setFont(authBtn.getFont().deriveFont(Font.PLAIN, 12f));
         authBtn.addActionListener(e -> { if (onLoginRequested != null) onLoginRequested.run(); });
-        JPanel hright = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        providerBox.setFont(providerBox.getFont().deriveFont(Font.PLAIN, 12f));
+        providerBox.setPreferredSize(new Dimension(170, 26));
+        providerBox.setEnabled(false);
+        providerBox.addItem("(登录后可选厂商)");
+        providerBox.addActionListener(e -> {
+            int idx = providerBox.getSelectedIndex();
+            if (!updatingProviders && idx >= 0 && idx < providerKeys.size()) client.setPreferredProvider(providerKeys.get(idx));
+        });
+        JPanel hright = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         hright.setOpaque(false);
+        hright.add(providerBox);
         hright.add(authBtn);
         header.add(hright, BorderLayout.EAST);
         chat.add(header, BorderLayout.NORTH);
@@ -265,6 +277,43 @@ public class ChatPanel extends JPanel {
     public void refreshAuth() {
         authBtn.setText(client.isLoggedIn() ? ("已登录: " + (client.getUsername() == null ? "—" : client.getUsername())) : "登录 Agent");
         if (active != null) chatSub.setText(client.isLoggedIn() ? "在线 · Agent 已接入" : "在线 · 技能检索模式（登录后可接入 Agent）");
+        refreshProviders();
+    }
+
+    /** 拉取大模型厂商列表并填入选框 */
+    public void refreshProviders() {
+        if (!client.isLoggedIn()) {
+            updatingProviders = true;
+            providerBox.removeAllItems();
+            providerKeys.clear();
+            providerBox.addItem("(登录后可选厂商)");
+            providerBox.setEnabled(false);
+            updatingProviders = false;
+            return;
+        }
+        providerBox.setEnabled(true);
+        new SwingWorker<List<Object>, Void>() {
+            @Override protected List<Object> doInBackground() throws Exception { return client.listProviders(); }
+            @Override protected void done() {
+                try {
+                    List<Object> data = get();
+                    updatingProviders = true;
+                    providerBox.removeAllItems();
+                    providerKeys.clear();
+                    for (Object o : data) {
+                        Map<String, Object> m = Json.asObject(o);
+                        boolean configured = Boolean.TRUE.equals(m.get("configured"));
+                        providerKeys.add(Json.str(m.get("key")));
+                        providerBox.addItem(Json.str(m.get("label")) + (configured ? "" : " ·未配置"));
+                    }
+                    updatingProviders = false;
+                    if (!providerKeys.isEmpty()) {
+                        providerBox.setSelectedIndex(0);
+                        client.setPreferredProvider(providerKeys.get(0));
+                    }
+                } catch (Exception ignored) { updatingProviders = false; }
+            }
+        }.execute();
     }
 
     /** 登录后走真 Agent: 自动编排并调用技能 */

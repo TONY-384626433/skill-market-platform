@@ -38,11 +38,20 @@ func (h *AgentHandler) ListTools(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": tools, "total": len(tools)})
 }
 
+// Providers GET /api/v1/agent/providers — 大模型厂商列表与配置状态
+func (h *AgentHandler) Providers(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"data":    h.svc.ListProviders(),
+		"summary": h.svc.ProviderSummary(),
+	})
+}
+
 // Chat POST /api/v1/agent/chat — 自然语言对话并自动编排技能
 func (h *AgentHandler) Chat(c *gin.Context) {
 	var req struct {
-		Message string               `json:"message" binding:"required"`
-		History []model.AgentMessage `json:"history"`
+		Message  string               `json:"message" binding:"required"`
+		History  []model.AgentMessage `json:"history"`
+		Provider string               `json:"provider"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误: message 不能为空"})
@@ -56,7 +65,7 @@ func (h *AgentHandler) Chat(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 180*time.Second)
 	defer cancel()
 
-	answer, err := h.svc.Chat(ctx, c.GetString("user_id"), req.Message, req.History)
+	answer, err := h.svc.ChatWithProvider(ctx, c.GetString("user_id"), req.Message, req.History, req.Provider)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
