@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>SkillHub · 后端地址设置</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 26px 28px; background: #0d1b2a; color: #e6edf7;
+        font-family: 'Segoe UI', system-ui, 'Microsoft YaHei', sans-serif; font-size: 14px;
+      }
+      h1 { margin: 0 0 6px; font-size: 17px; }
+      p.sub { margin: 0 0 18px; color: #8ea4c2; font-size: 13px; }
+      label { display: block; margin: 0 0 8px; color: #a9bdd8; font-size: 13px; }
+      input[type='text'] {
+        width: 100%; padding: 11px 13px; border-radius: 9px; border: 1px solid #26415f;
+        background: #12233a; color: #e6edf7; font-size: 14px; outline: none;
+      }
+      input[type='text']:focus { border-color: #0b63ce; box-shadow: 0 0 0 3px rgba(11, 99, 206, 0.25); }
+      .presets { display: flex; gap: 10px; margin: 14px 0 18px; flex-wrap: wrap; }
+      button {
+        padding: 9px 16px; border-radius: 8px; border: 1px solid #26415f; background: #16293f;
+        color: #cfe0f5; cursor: pointer; font-size: 13px;
+      }
+      button:hover { border-color: #0b63ce; }
+      button.primary { background: #0b63ce; border-color: #0b63ce; color: #fff; }
+      .row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
+      .hint { margin-top: 10px; color: #7f95b3; font-size: 12px; min-height: 16px; white-space: pre-line; }
+      .ok { color: #46d39a; }
+      .err { color: #ff8080; }
+    </style>
+  </head>
+  <body>
+    <h1>后端地址设置</h1>
+    <p class="sub">选择 SkillHub 桌面客户端要加载的入口页面</p>
+
+    <label for="url">入口地址</label>
+    <input id="url" type="text" spellcheck="false" placeholder="http://localhost:4173" />
+
+    <div class="presets">
+      <button id="p-local" type="button">本地版 (localhost:4173)</button>
+      <button id="p-web" type="button">公网网页版 (GitHub Pages)</button>
+    </div>
+
+    <div class="hint" id="hint"></div>
+
+    <div class="row">
+      <button id="cancel" type="button">取消</button>
+      <button id="save" class="primary" type="button">保存并加载</button>
+    </div>
+
+    <script src="settings.js"></script>
+  </body>
+</html>

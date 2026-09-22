@@ -1,0 +1,35 @@
+{
+  "name": "skillhub-desktop",
+  "version": "1.0.0",
+  "description": "SkillHub 桌面客户端 — 九江银行内部 AI 能力中心 (Electron)",
+  "main": "main.js",
+  "author": "TONY-384626433",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "build": {
+    "appId": "com.skillhub.desktop",
+    "productName": "SkillHub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "settings.html",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}
