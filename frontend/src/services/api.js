@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// 运行时配置优先 (public/config.js -> window.__SKILLHUB_API_BASE__),
+// 其次构建期变量 VITE_API_BASE, 最后回退同源 /api/v1。
+const runtimeApiBase = (typeof window !== 'undefined' && window.__SKILLHUB_API_BASE__) || '';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || '/api/v1',
+  baseURL: runtimeApiBase || import.meta.env.VITE_API_BASE || '/api/v1',
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
