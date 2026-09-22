@@ -11,7 +11,9 @@ import java.util.Map;
 
 /**
  * SkillHub 桌面客户端 (Java / Swing 原生实现)
- * — 连接 SkillHub 后端，检索「企业审核库」与「GitHub 开源」技能。
+ * 两个标签页：
+ *   1) 技能市场 — 连接后端，检索「企业审核库」与「GitHub 开源」技能
+ *   2) AI 会话   — 微信风格聊天，发消息即帮你搜技能
  */
 public class App extends JFrame {
 
@@ -26,15 +28,46 @@ public class App extends JFrame {
     };
     private final JTable table = new JTable(model);
     private final SkillHubClient client = new SkillHubClient(baseField.getText());
+    private final ChatPanel chatPanel = new ChatPanel(client);
 
-    public App() {
-        super("SkillHub 桌面客户端 · Java Edition");
+    public App(String initialTab) {
+        super("SkillHub · 九江银行内部 AI 能力中心");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(1100, 680);
+        setSize(1180, 720);
         setLocationRelativeTo(null);
-        setLayout(new BorderLayout());
 
-        add(buildHeader(), BorderLayout.NORTH);
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.setFont(tabs.getFont().deriveFont(Font.PLAIN, 14f));
+        tabs.addTab("技能市场", buildMarketPanel());
+        tabs.addTab("AI 会话", chatPanel);
+        if ("chat".equalsIgnoreCase(initialTab)) tabs.setSelectedIndex(1);
+        add(tabs, BorderLayout.CENTER);
+
+        connectBtn.addActionListener(e -> doConnect());
+        searchBtn.addActionListener(e -> doSearch());
+        queryField.addActionListener(e -> doSearch());
+
+        setStatus("就绪 · 默认后端 " + client.getBase());
+
+        if (Boolean.getBoolean("skillhub.debug")) {
+            SwingUtilities.invokeLater(() -> {
+                System.out.println("DEBUG chatPanel size=" + chatPanel.getSize());
+                dump(chatPanel, "  ");
+            });
+        }
+    }
+
+    private static void dump(Component c, String indent) {
+        System.out.println(indent + c.getClass().getSimpleName() + " bounds=" + c.getBounds()
+                + " visible=" + c.isVisible() + " pref=" + c.getPreferredSize());
+        if (c instanceof Container) {
+            for (Component child : ((Container) c).getComponents()) dump(child, indent + "  ");
+        }
+    }
+
+    private JPanel buildMarketPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(buildHeader(), BorderLayout.NORTH);
 
         table.setRowHeight(26);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
@@ -44,19 +77,14 @@ public class App extends JFrame {
                 if (e.getClickCount() == 2) openSelected();
             }
         });
-        add(new JScrollPane(table), BorderLayout.CENTER);
+        panel.add(new JScrollPane(table), BorderLayout.CENTER);
 
         JPanel south = new JPanel(new BorderLayout());
         south.setBorder(BorderFactory.createEmptyBorder(6, 12, 8, 12));
         statusLabel.setForeground(new Color(0x33, 0x66, 0x99));
         south.add(statusLabel, BorderLayout.WEST);
-        add(south, BorderLayout.SOUTH);
-
-        connectBtn.addActionListener(e -> doConnect());
-        searchBtn.addActionListener(e -> doSearch());
-        queryField.addActionListener(e -> doSearch());
-
-        setStatus("就绪 · 默认后端 " + client.getBase());
+        panel.add(south, BorderLayout.SOUTH);
+        return panel;
     }
 
     private JPanel buildHeader() {
@@ -191,6 +219,24 @@ public class App extends JFrame {
 
     public static void main(String[] args) {
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()); } catch (Exception ignored) { }
-        SwingUtilities.invokeLater(() -> new App().setVisible(true));
+        String initialTab = "market";
+        boolean demo = false;
+        for (String a : args) {
+            if (a == null) continue;
+            if (a.toLowerCase().contains("chat")) initialTab = "chat";
+            if (a.toLowerCase().contains("demo")) demo = true;
+        }
+        final String tab = initialTab;
+        final boolean runDemo = demo;
+        SwingUtilities.invokeLater(() -> {
+            App app = new App(tab);
+            app.setVisible(true);
+            if (runDemo) {
+                new javax.swing.Timer(1200, ev -> {
+                    ((javax.swing.Timer) ev.getSource()).stop();
+                    app.chatPanel.demoSend("帮我找日志脱敏相关的技能");
+                }).start();
+            }
+        });
     }
 }
