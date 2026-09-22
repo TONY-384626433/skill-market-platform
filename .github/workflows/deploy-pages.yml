@@ -42,6 +42,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # 后端地址来自仓库变量 SKILLHUB_API_BASE (隧道地址变了只改这里)
+          # 留空则回退同源 /api/v1, 也可在部署后改 gh-pages 上的 config.js
+          VITE_API_BASE: ${{ vars.SKILLHUB_API_BASE }}
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
