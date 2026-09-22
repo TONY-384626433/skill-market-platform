@@ -83,7 +83,8 @@ export const checkHealth = () => api.get('/health');
 // ---------- AI 智能体 ----------
 export const getAgentStatus = () => api.get('/agent/status');
 export const getAgentTools = () => api.get('/agent/tools');
-export const sendAgentMessage = (text, history) => api.post('/agent/chat', { message: text, history }, { timeout: 190000 });
+export const getAgentProviders = () => api.get('/agent/providers');
+export const sendAgentMessage = (text, history, provider) => api.post('/agent/chat', { message: text, history, ...(provider ? { provider } : {}) }, { timeout: 190000 });
 
 // 技能推荐 Agent (需求 → 推荐技能)
 export const getRecommendStatus = () => api.get('/agent/recommend/status');

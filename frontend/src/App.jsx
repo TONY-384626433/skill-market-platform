@@ -3,7 +3,7 @@ import { HashRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } f
 import { Alert, App as AntApp, Avatar, Badge, Button, ConfigProvider, Drawer, Dropdown, Layout, Popover, Skeleton, theme as antdTheme, Tooltip } from 'antd';
 import {
   ApiOutlined, AppstoreOutlined, AuditOutlined, BankOutlined, BellOutlined, CodeOutlined,
-  LoginOutlined, LogoutOutlined, MenuOutlined, PlusOutlined, RobotOutlined, SafetyCertificateOutlined,
+  DeploymentUnitOutlined, LoginOutlined, LogoutOutlined, MenuOutlined, PlusOutlined, RobotOutlined, SafetyCertificateOutlined,
   SearchOutlined, ThunderboltOutlined, ToolOutlined, UserOutlined,
 } from '@ant-design/icons';
 import AuthGate from './components/AuthGate';
@@ -21,6 +21,7 @@ const AuditPage = React.lazy(() => import('./pages/AuditPage'));
 const SecurityPage = React.lazy(() => import('./pages/SecurityPage'));
 const AgentPage = React.lazy(() => import('./pages/AgentPage'));
 const RecommendPage = React.lazy(() => import('./pages/RecommendPage'));
+const ProvidersPage = React.lazy(() => import('./pages/ProvidersPage'));
 const LoginPage = React.lazy(() => import('./pages/LoginPage'));
 const MyInstallationsPage = React.lazy(() => import('./pages/MyInstallationsPage'));
 const CommandPalette = React.lazy(() => import('./components/CommandPalette'));
@@ -31,6 +32,7 @@ const allNavigation = [
   { key: 'market', path: '/', label: '技能市场', icon: AppstoreOutlined },
   { key: 'agent', path: '/agent', label: 'AI 智能体', icon: RobotOutlined, authenticated: true },
   { key: 'recommend', path: '/recommend', label: 'AI 找技能', icon: ThunderboltOutlined, authenticated: true },
+  { key: 'providers', path: '/providers', label: '模型厂商', icon: DeploymentUnitOutlined, authenticated: true },
   { key: 'my', path: '/my', label: '我的技能', icon: ToolOutlined, authenticated: true },
   { key: 'dev', path: '/dev', label: '开发者工作台', icon: CodeOutlined, roles: ['developer', 'admin'] },
   { key: 'audit', path: '/audit', label: '技能审核', icon: SafetyCertificateOutlined, roles: ['admin'] },
@@ -38,7 +40,7 @@ const allNavigation = [
   { key: 'admin', path: '/admin', label: '平台治理', icon: AuditOutlined, roles: ['admin'] },
 ];
 
-const pageNames = { '/': '技能市场', '/agent': 'AI 智能体', '/recommend': 'AI 找技能', '/my': '我的技能', '/dev': '开发者工作台', '/audit': '技能审核', '/security': '安全治理', '/admin': '平台治理', '/login': '企业账号登录' };
+const pageNames = { '/': '技能市场', '/agent': 'AI 智能体', '/recommend': 'AI 找技能', '/providers': '模型厂商', '/my': '我的技能', '/dev': '开发者工作台', '/audit': '技能审核', '/security': '安全治理', '/admin': '平台治理', '/login': '企业账号登录' };
 
 function Brand() {
   return <Link className="brand" to="/" aria-label="九江银行 SkillHub 首页"><span className="brand-mark"><BankOutlined /><i /></span><span><strong>SkillHub</strong><small>AI CAPABILITY OS</small></span></Link>;
@@ -149,6 +151,7 @@ function Shell() {
                 <Route path="/my" element={<AuthGate><MyInstallationsPage /></AuthGate>} />
                 <Route path="/agent" element={<AuthGate><AgentPage /></AuthGate>} />
                 <Route path="/recommend" element={<AuthGate><RecommendPage /></AuthGate>} />
+<Route path="/providers" element={<AuthGate><ProvidersPage /></AuthGate>} />
                 <Route path="/dev" element={<AuthGate roles={['developer', 'admin']}><DeveloperPage /></AuthGate>} />
                 <Route path="/audit" element={<AuthGate roles={['admin']}><AuditPage /></AuthGate>} />
                 <Route path="/security" element={<AuthGate roles={['admin']}><SecurityPage /></AuthGate>} />

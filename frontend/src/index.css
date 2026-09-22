@@ -1575,3 +1575,22 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .reco-footnote { margin-top: 4px; }
 /* ---------- AI 找技能: 审查状态条 ---------- */
 .reco-card-review { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(53,227,174,.08); font-size: 12.5px; }
+
+/* ---------- 模型厂商监控 ---------- */
+.providers-page { display: flex; flex-direction: column; gap: 16px; }
+.providers-page .page-lead { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.providers-page .page-eyebrow { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; letter-spacing: .12em; color: #6f8bb0; }
+.providers-page h1 { margin: 6px 0 4px; font-size: 24px; }
+.providers-page .page-lead p { margin: 0; max-width: 760px; color: #7f93ab; font-size: 13px; line-height: 1.7; }
+.providers-kpi .ant-card { border-radius: 12px; }
+.providers-kpi .ant-card-body { padding: 16px 18px; }
+.providers-kpi small { color: #7f93ab; font-size: 12px; }
+.kpi-value { font-size: 24px; font-weight: 700; line-height: 1.3; }
+.kpi-value.kpi-small { font-size: 17px; }
+.provider-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.providers-table-card .ant-card-body { padding: 8px 4px 4px; }
+.providers-chat-card .ant-card-body { display: flex; flex-direction: column; gap: 12px; }
+.provider-chat-result { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; background: rgba(11,99,206,.05); border: 1px solid rgba(11,99,206,.15); }
+.provider-chat-steps { display: flex; flex-direction: column; gap: 6px; }
+.provider-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.provider-chat-answer { margin: 0; padding: 12px 14px; border-radius: 10px; background: #fff; border: 1px solid #e6ecf4; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.75; color: #22314a; max-height: 340px; overflow: auto; }
