@@ -21,6 +21,7 @@ public class App extends JFrame {
     private final JComboBox<String> sourceBox = new JComboBox<>(new String[]{"GitHub 开源", "企业审核库"});
     private final JTextField queryField = new JTextField(24);
     private final JButton connectBtn = new JButton("连接");
+    private final JButton loginBtn = new JButton("登录");
     private final JButton searchBtn = new JButton("搜索");
     private final JLabel statusLabel = new JLabel("未连接");
     private final DefaultTableModel model = new DefaultTableModel(new Object[]{"名称"}, 0) {
@@ -44,8 +45,10 @@ public class App extends JFrame {
         add(tabs, BorderLayout.CENTER);
 
         connectBtn.addActionListener(e -> doConnect());
+        loginBtn.addActionListener(e -> doLogin());
         searchBtn.addActionListener(e -> doSearch());
         queryField.addActionListener(e -> doSearch());
+        chatPanel.setOnLoginRequested(this::doLogin);
 
         setStatus("就绪 · 默认后端 " + client.getBase());
 
@@ -96,6 +99,7 @@ public class App extends JFrame {
         row1.add(new JLabel("后端地址"));
         row1.add(baseField);
         row1.add(connectBtn);
+        row1.add(loginBtn);
         root.add(row1);
 
         JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
@@ -115,6 +119,57 @@ public class App extends JFrame {
     }
 
     private void setStatus(String text) { statusLabel.setText(text); }
+
+    private void doLogin() {
+        JTextField u = new JTextField(client.getUsername() == null || client.getUsername().isEmpty() ? "zhangsan" : client.getUsername());
+        javax.swing.JPasswordField p = new javax.swing.JPasswordField("demo");
+        Object[] msg = {"用户名", u, "密码", p};
+        int r = JOptionPane.showConfirmDialog(this, msg, "登录 SkillHub（获取 Agent 权限）", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (r != JOptionPane.OK_OPTION) return;
+        loginBtn.setEnabled(false);
+        setStatus("登录中…");
+        final String user = u.getText().trim();
+        final String pass = new String(p.getPassword());
+        new SwingWorker<Map<String, Object>, Void>() {
+            @Override protected Map<String, Object> doInBackground() throws Exception {
+                return client.login(user, pass);
+            }
+            @Override protected void done() {
+                loginBtn.setEnabled(true);
+                try {
+                    Map<String, Object> res = get();
+                    Map<String, Object> account = Json.asObject(res.get("user"));
+                    setStatus("✅ 已登录: " + Json.str(account.get("username")) + " (" + Json.str(account.get("role")) + ") · Agent 可用");
+                    loginBtn.setText("已登录");
+                    chatPanel.refreshAuth();
+                } catch (Exception ex) {
+                    setStatus("❌ 登录失败: " + rootMessage(ex));
+                }
+            }
+        }.execute();
+    }
+
+    /** 演示用：自动登录后发一条消息（验证 Agent 链路） */
+    public void demoLoginThenSend(final String user, final String pass, final String text) {
+        setStatus("演示：登录中…");
+        new SwingWorker<Void, Void>() {
+            @Override protected Void doInBackground() throws Exception {
+                client.login(user, pass);
+                return null;
+            }
+            @Override protected void done() {
+                try {
+                    get();
+                    loginBtn.setText("已登录");
+                    setStatus("✅ 已登录: " + Json.str(client.getUsername()) + " · Agent 可用");
+                    chatPanel.refreshAuth();
+                } catch (Exception ex) {
+                    setStatus("❌ 演示登录失败: " + rootMessage(ex));
+                }
+                chatPanel.demoSend(text);
+            }
+        }.execute();
+    }
 
     private void doConnect() {
         final String base = baseField.getText().trim();
@@ -234,7 +289,7 @@ public class App extends JFrame {
             if (runDemo) {
                 new javax.swing.Timer(1200, ev -> {
                     ((javax.swing.Timer) ev.getSource()).stop();
-                    app.chatPanel.demoSend("帮我找日志脱敏相关的技能");
+                    app.demoLoginThenSend("admin", "demo", "帮我做一次数据库巡检");
                 }).start();
             }
         });

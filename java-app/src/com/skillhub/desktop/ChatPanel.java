@@ -31,6 +31,8 @@ public class ChatPanel extends JPanel {
     private final JTextField input = new JTextField();
     private final JLabel chatTitle = new JLabel();
     private final JLabel chatSub = new JLabel();
+    private final JButton authBtn = new JButton("登录 Agent");
+    private Runnable onLoginRequested;
 
     /** 每个会话独立保存消息: role(text) -> "me"/"ai" */
     private final Map<String, List<String[]>> conversations = new LinkedHashMap<>();
@@ -141,6 +143,13 @@ public class ChatPanel extends JPanel {
         htext.setOpaque(false);
         htext.add(chatTitle); htext.add(chatSub);
         header.add(htext, BorderLayout.WEST);
+        authBtn.setFocusPainted(false);
+        authBtn.setFont(authBtn.getFont().deriveFont(Font.PLAIN, 12f));
+        authBtn.addActionListener(e -> { if (onLoginRequested != null) onLoginRequested.run(); });
+        JPanel hright = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        hright.setOpaque(false);
+        hright.add(authBtn);
+        header.add(hright, BorderLayout.EAST);
         chat.add(header, BorderLayout.NORTH);
 
         messageList.setLayout(new BoxLayout(messageList, BoxLayout.Y_AXIS));
@@ -172,7 +181,7 @@ public class ChatPanel extends JPanel {
         active = c;
         c.unread = 0;
         chatTitle.setText(c.name);
-        chatSub.setText("在线 · 已连接 SkillHub");
+        chatSub.setText(client.isLoggedIn() ? "在线 · Agent 已接入" : "在线 · 技能检索模式（登录后可接入 Agent）");
         messageList.removeAll();
         List<String[]> conv = conversations.computeIfAbsent(c.name, k -> new ArrayList<>());
         if (conv.isEmpty()) {
@@ -197,10 +206,11 @@ public class ChatPanel extends JPanel {
 
     private void respond(String text) {
         final Contact target = active;
-        render("ai", "正在检索…", true);
+        render("ai", client.isLoggedIn() ? "Agent 编排中…" : "正在检索…", true);
         new SwingWorker<String, Void>() {
             @Override protected String doInBackground() {
                 try {
+                    if (client.isLoggedIn()) return callAgent(text, target);
                     String kw = toKeyword(text);
                     Map<String, Object> res = client.searchGitHub(kw, 1, 4);
                     List<Object> data = Json.asArray(res.get("data"));
@@ -246,6 +256,52 @@ public class ChatPanel extends JPanel {
                 }
             }
         }.execute();
+    }
+
+    /** 由外部(App)设置登录动作 */
+    public void setOnLoginRequested(Runnable r) { this.onLoginRequested = r; }
+
+    /** 登录状态变化后刷新头部按钮/副标题 */
+    public void refreshAuth() {
+        authBtn.setText(client.isLoggedIn() ? ("已登录: " + (client.getUsername() == null ? "—" : client.getUsername())) : "登录 Agent");
+        if (active != null) chatSub.setText(client.isLoggedIn() ? "在线 · Agent 已接入" : "在线 · 技能检索模式（登录后可接入 Agent）");
+    }
+
+    /** 登录后走真 Agent: 自动编排并调用技能 */
+    private String callAgent(String text, Contact target) {
+        try {
+            List<Map<String, String>> history = new ArrayList<>();
+            List<String[]> conv = conversations.get(target.name);
+            if (conv != null) {
+                // 排除最后一条(即当前用户消息)，其余作为上下文；只取最近 6 轮
+                int end = Math.max(0, conv.size() - 1);
+                int start = Math.max(0, end - 12);
+                for (int i = start; i < end; i++) {
+                    String[] m = conv.get(i);
+                    Map<String, String> h = new LinkedHashMap<>();
+                    h.put("role", "me".equals(m[0]) ? "user" : "assistant");
+                    h.put("content", m[1]);
+                    history.add(h);
+                }
+            }
+            Map<String, Object> answer = client.agentChat(text, history);
+            String a = Json.str(answer.get("answer"));
+            int calls = (int) toLong(answer.get("tool_calls"));
+            String provider = Json.str(answer.get("provider"));
+            String model = Json.str(answer.get("model"));
+            StringBuilder sb = new StringBuilder(a.isEmpty() ? "（Agent 无回复）" : a);
+            if (calls > 0) sb.append("\n\n🔧 自动编排并调用了 ").append(calls).append(" 个技能");
+            sb.append("\n— 引擎: ").append(provider.isEmpty() ? "agent" : provider);
+            if (!model.isEmpty()) sb.append(" · ").append(model);
+            return sb.toString();
+        } catch (Exception ex) {
+            return "Agent 调用失败：" + ex.getMessage() + "\n可试试先在「技能市场」页确认后端地址(勾), 或重新登录。";
+        }
+    }
+
+    private static long toLong(Object v) {
+        if (v instanceof Number) return ((Number) v).longValue();
+        try { return Long.parseLong(String.valueOf(v)); } catch (Exception e) { return 0; }
     }
 
     private static String formatHits(Map<String, Object> res, List<Object> data, String lead) {

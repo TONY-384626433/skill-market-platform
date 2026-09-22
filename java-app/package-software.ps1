@@ -36,7 +36,7 @@ $common = @(
     "--main-jar", "SkillHubDesktop.jar",
     "--main-class", "com.skillhub.desktop.App",
     "--vendor", "SkillHub",
-    "--app-version", "1.0.0",
+    "--app-version", "1.1.0",
     "--description", "SkillHub Desktop Client (Java)",
     "--add-modules", "java.base,java.desktop,java.net.http,java.logging",
     "--java-options", "-Dfile.encoding=UTF-8"
@@ -65,4 +65,4 @@ Write-Host "[*] building .exe installer ..." -ForegroundColor Yellow
 Remove-Item "$Root\release-installer" -Recurse -Force -ErrorAction SilentlyContinue
 & "$jdk\bin\jpackage.exe" --type exe @common --dest "$Root\release-installer" --win-menu --win-shortcut --win-dir-chooser --win-per-user-install
 if ($LASTEXITCODE -ne 0) { Write-Host "[x] installer failed" -ForegroundColor Red; exit 1 }
-Write-Host "[OK] installer: $Root\release-installer\SkillHub-1.0.0.exe" -ForegroundColor Green
+Write-Host "[OK] installer: $Root\release-installer\SkillHub-1.1.0.exe" -ForegroundColor Green
