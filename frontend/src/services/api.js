@@ -4,8 +4,12 @@ import axios from 'axios';
 // 其次构建期变量 VITE_API_BASE, 最后回退同源 /api/v1。
 const runtimeApiBase = (typeof window !== 'undefined' && window.__SKILLHUB_API_BASE__) || '';
 
+// 统一后端基址 (运行时 config.js > 构建期 VITE_API_BASE > 同源 /api/v1)
+// 供 axios 请求与下载/导出直链共用, 避免直链仍指向旧地址。
+const apiBase = (runtimeApiBase || import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '');
+
 const api = axios.create({
-  baseURL: runtimeApiBase || import.meta.env.VITE_API_BASE || '/api/v1',
+  baseURL: apiBase,
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -45,7 +49,7 @@ export const getGitHubSkillPreview = (skill) => api.get('/github/skills/preview'
   timeout: 30000,
 });
 export const getGitHubSkillDownloadURL = (skill) => {
-  const base = (import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '');
+  const base = apiBase;
   const params = new URLSearchParams({ repo: skill.repository, ref: skill.ref, path: skill.path });
   return `${base}/github/skills/download?${params.toString()}`;
 };
@@ -103,7 +107,7 @@ export const getSkillSecurityBadge = (id) => api.get(`/skills/${id}/security-bad
 export const submitImportRequest = (repo, ref, path, skillUrl) =>
   api.post('/github/import-requests', { repository: repo, ref, path, skill_url: skillUrl }, { timeout: 180000 });
 export const getImportRequest = (reqId) => api.get(`/github/import-requests/${reqId}`);
-export const getSecurityRulesExportURL = () => `${(import.meta.env.VITE_API_BASE || '/api/v1').replace(/\/$/, '')}/admin/security-rules/export`;
+export const getSecurityRulesExportURL = () => `${apiBase}/admin/security-rules/export`;
 // 三道防线 (第一道 静态/AST 语义 · 第二道 沙箱 · 第三道 AI 语义审计)
 export const getDefenseStatus = () => api.get('/admin/security/defense-status');
 export const runSemanticAudit = (payload) => api.post('/admin/security/semantic-audit', payload, { timeout: 120000 });

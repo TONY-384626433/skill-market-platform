@@ -8,7 +8,9 @@
 # ============================================================
 param(
     [string]$Repo = "TONY-384626433/skill-market-platform",
-    [int]$Port = 4173
+    # 隧道直指后端 8080 (API)。这样跨域预检 OPTIONS 会由后端正确返回 CORS 头；
+    # 若指向前端 4173, vite 预览代理会改掉预检响应导致网页版 POST 失败。
+    [int]$Port = 8080
 )
 
 $ErrorActionPreference = "Continue"
@@ -33,7 +35,7 @@ if (-not $cfBin) { Write-Host "  × 未找到 cloudflared，请先安装/加入 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { Write-Host "  × 未找到 gh CLI" -ForegroundColor Red; exit 1 }
 
 $listen = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-if (-not $listen) { Write-Host "  ! 端口 $Port 没有在监听（前端 preview 未启动？）" -ForegroundColor Yellow }
+if (-not $listen) { Write-Host "  ! 端口 $Port 没有在监听（后端 Go API 未启动？）" -ForegroundColor Yellow }
 
 # 1. 停掉旧隧道
 Get-Process -Name cloudflared -ErrorAction SilentlyContinue | ForEach-Object {
