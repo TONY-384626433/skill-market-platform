@@ -44,6 +44,7 @@ func providerPresets() []llmProvider {
 		{Key: "kimi", Label: "Kimi (Moonshot)", Kind: "openai", APIBase: "https://api.moonshot.cn/v1", Model: "moonshot-v1-8k", EnvPrefix: "MOONSHOT"},
 		{Key: "openai", Label: "OpenAI (ChatGPT)", Kind: "openai", APIBase: "https://api.openai.com/v1", Model: "gpt-4o-mini", EnvPrefix: "OPENAI"},
 		{Key: "claude", Label: "Claude (Anthropic)", Kind: "anthropic", APIBase: "https://api.anthropic.com/v1", Model: "claude-3-5-sonnet-latest", EnvPrefix: "ANTHROPIC"},
+		{Key: "deepseek-anthropic", Label: "DeepSeek · Anthropic 端点", Kind: "anthropic", APIBase: "https://api.deepseek.com/anthropic", Model: "deepseek-chat", EnvPrefix: "DEEPSEEK_ANTHROPIC"},
 		{Key: "ark", Label: "火山方舟 (豆包/Seedance)", Kind: "openai", APIBase: "https://ark.cn-beijing.volces.com/api/v3", Model: "doubao-pro-32k", EnvPrefix: "ARK"},
 		{Key: "qwen", Label: "通义千问 (DashScope)", Kind: "openai", APIBase: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-plus", EnvPrefix: "DASHSCOPE"},
 		{Key: "zhipu", Label: "智谱 GLM", Kind: "openai", APIBase: "https://open.bigmodel.cn/api/paas/v4", Model: "glm-4-plus", EnvPrefix: "ZHIPU"},
