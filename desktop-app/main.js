@@ -1,8 +1,13 @@
 // SkillHub 桌面客户端 — Electron 主进程
 // 作用：把 SkillHub 网页应用包成一个 Windows 桌面 App，可切换本地版/公网版后端。
-const { app, BrowserWindow, Menu, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, dialog, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+const ICON_PATH = path.join(__dirname, 'assets', 'skillhub.ico');
+function appIcon() {
+  try { return nativeImage.createFromPath(ICON_PATH); } catch { return undefined; }
+}
 
 const PRESETS = {
   local: 'http://localhost:4173',
@@ -34,6 +39,21 @@ function writeConfig(cfg) {
 let config = { url: PRESETS.local, presets: PRESETS };
 let mainWindow = null;
 let settingsWindow = null;
+let tray = null;
+
+function autostartEnabled() {
+  try { return app.getLoginItemSettings().openAtLogin; } catch { return false; }
+}
+function setAutostart(enable) {
+  try {
+    app.setLoginItemSettings({ openAtLogin: Boolean(enable), path: process.execPath, args: [] });
+    if (tray) buildTray();
+    return true;
+  } catch (error) {
+    dialog.showErrorBox('设置开机自启失败', String(error));
+    return false;
+  }
+}
 
 function buildMenu() {
   const template = [
@@ -44,6 +64,8 @@ function buildMenu() {
         { label: '强制刷新', accelerator: 'Ctrl+Shift+R', click: () => mainWindow && mainWindow.webContents.reloadIgnoringCache() },
         { type: 'separator' },
         { label: '后端地址设置…', accelerator: 'Ctrl+,', click: openSettings },
+        { type: 'separator' },
+        { label: '开机自启', type: 'checkbox', checked: autostartEnabled(), click: (item) => setAutostart(item.checked) },
         { type: 'separator' },
         { role: 'quit', label: '退出' },
       ],
@@ -102,6 +124,33 @@ function errorPage(url, code, desc) {
   return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
 }
 
+function buildTray() {
+  if (!tray) {
+    tray = new Tray(appIcon() || nativeImage.createEmpty());
+    tray.setToolTip('SkillHub · 九江银行 AI 能力中心');
+    tray.on('double-click', () => showMainWindow());
+  }
+  const menu = Menu.buildFromTemplate([
+    { label: '显示主窗口', click: showMainWindow },
+    { label: '隐藏到后台', click: () => mainWindow && mainWindow.hide() },
+    { type: 'separator' },
+    { label: '重新加载', click: () => mainWindow && mainWindow.reload() },
+    { label: '后端地址设置…', click: openSettings },
+    { type: 'separator' },
+    { label: '开机自启', type: 'checkbox', checked: autostartEnabled(), click: (item) => setAutostart(item.checked) },
+    { type: 'separator' },
+    { label: '退出 SkillHub', click: () => { app.isQuitting = true; app.quit(); } },
+  ]);
+  tray.setContextMenu(menu);
+}
+
+function showMainWindow() {
+  if (!mainWindow) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function openSettings() {
   if (settingsWindow) { settingsWindow.focus(); return; }
   settingsWindow = new BrowserWindow({
@@ -135,6 +184,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 680,
     title: 'SkillHub · 九江银行 AI 能力中心',
+    icon: appIcon(),
     backgroundColor: '#0d1b2a',
     autoHideMenuBar: false,
     webPreferences: {
@@ -158,13 +208,23 @@ function createWindow() {
     mainWindow.loadURL(errorPage(validatedURL || config.url, errorCode, errorDescription));
   });
 
+  mainWindow.on('close', (event) => {
+    // 默认关闭即退出；若托盘存在且非主动退出，则最小化到托盘
+    if (tray && !app.isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 app.whenReady().then(() => {
   config = readConfig();
+  app.setAppUserModelId('com.skillhub.desktop');
   buildMenu();
   createWindow();
+  try { buildTray(); } catch (error) { console.warn('托盘创建失败（不影响使用）:', error && error.message); }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -176,6 +236,8 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('config:get', () => config);
+ipcMain.handle('app:autostart-get', () => autostartEnabled());
+ipcMain.handle('app:autostart-set', (event, enable) => setAutostart(enable));
 ipcMain.handle('config:set-url', (event, url) => {
   const next = String(url || '').trim();
   if (!/^https?:\/\//i.test(next)) return { ok: false, error: '地址必须以 http:// 或 https:// 开头' };
