@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"sort"
@@ -204,6 +205,80 @@ func (s *AgentService) providerChain(requested string) []llmProvider {
 		add(p.Key)
 	}
 	return chain
+}
+
+// ============================================================
+// 厂商调用统计 (可观测性)
+// ============================================================
+
+type providerStat struct {
+	Calls      int    `json:"calls"`
+	Success    int    `json:"success"`
+	Failures   int    `json:"failures"`
+	TotalMs    int64  `json:"total_ms"`
+	LastMs     int64  `json:"last_ms"`
+	LastError  string `json:"last_error,omitempty"`
+	LastUsedAt int64  `json:"last_used_at"`
+}
+
+func (s *AgentService) recordProviderAttempt(key string, ok bool, ms int64, errMsg string) {
+	if key == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.providerStats == nil {
+		s.providerStats = map[string]*providerStat{}
+	}
+	st := s.providerStats[key]
+	if st == nil {
+		st = &providerStat{}
+		s.providerStats[key] = st
+	}
+	st.Calls++
+	st.TotalMs += ms
+	st.LastMs = ms
+	st.LastUsedAt = time.Now().Unix()
+	if ok {
+		st.Success++
+		st.LastError = ""
+	} else {
+		st.Failures++
+		st.LastError = errMsg
+	}
+}
+
+// providerStatsSnapshot 返回按调用次数倒序的统计快照
+func (s *AgentService) providerStatsSnapshot() map[string]interface{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	items := make([]map[string]interface{}, 0, len(s.providerStats))
+	var totalCalls, totalFails int
+	for key, st := range s.providerStats {
+		avg := int64(0)
+		if st.Calls > 0 {
+			avg = st.TotalMs / int64(st.Calls)
+		}
+		rate := 0.0
+		if st.Calls > 0 {
+			rate = float64(st.Success) / float64(st.Calls) * 100
+		}
+		totalCalls += st.Calls
+		totalFails += st.Failures
+		items = append(items, map[string]interface{}{
+			"provider": key, "calls": st.Calls, "success": st.Success, "failures": st.Failures,
+			"success_rate": math.Round(rate*10) / 10, "avg_ms": avg, "last_ms": st.LastMs,
+			"last_error": st.LastError, "last_used_at": st.LastUsedAt,
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i]["calls"].(int) > items[j]["calls"].(int)
+	})
+	return map[string]interface{}{
+		"total_calls":    totalCalls,
+		"total_failures": totalFails,
+		"providers":      items,
+	}
 }
 
 // callProvider 按协议分发

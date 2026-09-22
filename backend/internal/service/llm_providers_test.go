@@ -76,6 +76,42 @@ func TestActiveProviderSelection(t *testing.T) {
 	}
 }
 
+func TestProviderStatsRecording(t *testing.T) {
+	svc := &AgentService{}
+	svc.recordProviderAttempt("deepseek", true, 120, "")
+	svc.recordProviderAttempt("deepseek", false, 80, "HTTP 429")
+	svc.recordProviderAttempt("claude", true, 200, "")
+
+	snap := svc.providerStatsSnapshot()
+	if snap["total_calls"].(int) != 3 {
+		t.Fatalf("total_calls = %v", snap["total_calls"])
+	}
+	if snap["total_failures"].(int) != 1 {
+		t.Fatalf("total_failures = %v", snap["total_failures"])
+	}
+	items := snap["providers"].([]map[string]interface{})
+	if len(items) != 2 {
+		t.Fatalf("providers len = %d", len(items))
+	}
+	// deepseek 调用 2 次, 排最前
+	first := items[0]
+	if first["provider"] != "deepseek" || first["calls"].(int) != 2 {
+		t.Fatalf("first = %#v", first)
+	}
+	if first["success"].(int) != 1 || first["failures"].(int) != 1 {
+		t.Fatalf("deepseek success/fail wrong: %#v", first)
+	}
+	if first["success_rate"].(float64) != 50 {
+		t.Fatalf("success_rate = %v, want 50", first["success_rate"])
+	}
+	if first["avg_ms"].(int64) != 100 {
+		t.Fatalf("avg_ms = %v, want 100", first["avg_ms"])
+	}
+	if first["last_error"] != "HTTP 429" {
+		t.Fatalf("last_error = %v", first["last_error"])
+	}
+}
+
 func TestProviderChainOrder(t *testing.T) {
 	os.Setenv("DEEPSEEK_API_KEY", "sk-a")
 	os.Setenv("OPENAI_API_KEY", "sk-b")

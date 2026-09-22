@@ -40,6 +40,8 @@ type AgentService struct {
 	mu         sync.Mutex
 	toolCache  []model.AgentTool
 	toolCacheT time.Time
+
+	providerStats map[string]*providerStat
 }
 
 // NewAgentService 创建智能体服务
@@ -189,8 +191,11 @@ func (s *AgentService) ChatWithProvider(ctx context.Context, userID, message str
 		var lastErr error
 		failed := []string{}
 		for i, p := range chain {
+			t0 := time.Now()
 			text, steps, lastErr = s.chatWithLLM(ctx, userID, message, history, tools, p.Key)
+			cost := time.Since(t0).Milliseconds()
 			if lastErr == nil {
+				s.recordProviderAttempt(p.Key, true, cost, "")
 				answer.Model = p.Model
 				answer.ActiveProvider = p.Key
 				if i > 0 {
@@ -198,6 +203,7 @@ func (s *AgentService) ChatWithProvider(ctx context.Context, userID, message str
 				}
 				break
 			}
+			s.recordProviderAttempt(p.Key, false, cost, lastErr.Error())
 			failed = append(failed, p.Label)
 		}
 		if lastErr != nil {
@@ -261,6 +267,7 @@ func (s *AgentService) Status(ctx context.Context) map[string]interface{} {
 	for k, v := range s.ProviderSummary() {
 		out[k] = v
 	}
+	out["provider_stats"] = s.providerStatsSnapshot()
 	return out
 }
 
