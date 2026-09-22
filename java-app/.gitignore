@@ -1,3 +1,5 @@
 out/
 dist/
+release/
+release-installer/
 *.class
