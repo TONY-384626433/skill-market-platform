@@ -76,6 +76,39 @@ func TestActiveProviderSelection(t *testing.T) {
 	}
 }
 
+func TestProviderChainOrder(t *testing.T) {
+	os.Setenv("DEEPSEEK_API_KEY", "sk-a")
+	os.Setenv("OPENAI_API_KEY", "sk-b")
+	os.Setenv("LLM_PROVIDER", "openai")
+	defer os.Unsetenv("DEEPSEEK_API_KEY")
+	defer os.Unsetenv("OPENAI_API_KEY")
+	defer os.Unsetenv("LLM_PROVIDER")
+
+	svc := &AgentService{cfg: &config.Config{LLM: config.LLMConfig{}}}
+	// 指定 deepseek → deepseek 应在最前, 然后默认 openai, 其余已配置的跟上
+	chain := svc.providerChain("deepseek")
+	if len(chain) < 2 {
+		t.Fatalf("chain too short: %d", len(chain))
+	}
+	if chain[0].Key != "deepseek" {
+		t.Fatalf("chain[0] = %s, want deepseek", chain[0].Key)
+	}
+	if chain[1].Key != "openai" {
+		t.Fatalf("chain[1] = %s, want openai", chain[1].Key)
+	}
+	// 未指定 → 默认(LLM_PROVIDER=openai) 在最前
+	chain2 := svc.providerChain("")
+	if len(chain2) == 0 || chain2[0].Key != "openai" {
+		t.Fatalf("chain2[0] = %v, want openai", chain2)
+	}
+	// 未配置的厂商不应进入链
+	for _, p := range chain {
+		if p.Key == "claude" {
+			t.Fatal("claude 未配置却进入候选链")
+		}
+	}
+}
+
 func TestToAnthropicMessages(t *testing.T) {
 	var tc llmToolCall
 	tc.ID = "call_1"

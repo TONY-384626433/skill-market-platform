@@ -182,14 +182,31 @@ func (s *AgentService) ChatWithProvider(ctx context.Context, userID, message str
 	var steps []model.AgentStep
 	var text string
 	if activeOK {
-		text, steps, err = s.chatWithLLM(ctx, userID, message, history, tools, provider)
-		if err != nil {
-			// 大模型不可用时降级, 保证演示不中断
+		chain := s.providerChain(provider)
+		if len(chain) == 0 {
+			chain = []llmProvider{active}
+		}
+		var lastErr error
+		failed := []string{}
+		for i, p := range chain {
+			text, steps, lastErr = s.chatWithLLM(ctx, userID, message, history, tools, p.Key)
+			if lastErr == nil {
+				answer.Model = p.Model
+				answer.ActiveProvider = p.Key
+				if i > 0 {
+					text = fmt.Sprintf("> ⚡ 厂商 %s 调用失败, 已自动切换至 %s\n\n%s", strings.Join(failed, ", "), p.Label, text)
+				}
+				break
+			}
+			failed = append(failed, p.Label)
+		}
+		if lastErr != nil {
+			// 候选链全部失败 → 降级本地意图引擎, 保证演示不中断
 			answer.Fallback = true
 			answer.Provider = "local-intent"
 			answer.Model = "intent-router-v1"
 			text, steps = s.chatWithIntentEngine(ctx, userID, message, tools)
-			text = fmt.Sprintf("> ⚠ 大模型调用失败已降级为本地意图引擎 (%s)\n\n%s", truncate(err.Error(), 160), text)
+			text = fmt.Sprintf("> ⚠ 大模型调用失败已降级为本地意图引擎 (%s)\n\n%s", truncate(lastErr.Error(), 160), text)
 		}
 	} else {
 		answer.Fallback = true

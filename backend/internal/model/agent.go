@@ -37,7 +37,9 @@ type AgentMessage struct {
 
 // AgentAnswer 一次智能体回答
 type AgentAnswer struct {
-	SessionID  string      `json:"session_id"`
+	// ActiveProvider 实际成功响应的厂商 key (故障切换后可能是链中靠后的一家)
+	ActiveProvider string `json:"active_provider,omitempty"`
+	SessionID      string      `json:"session_id"`
 	Question   string      `json:"question"`
 	Answer     string      `json:"answer"`
 	Steps      []AgentStep `json:"steps"`

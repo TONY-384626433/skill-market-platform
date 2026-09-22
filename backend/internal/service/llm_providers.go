@@ -169,6 +169,43 @@ func (s *AgentService) activeProvider(requested string) (llmProvider, bool) {
 	return llmProvider{}, false
 }
 
+// providerChain 返回候选厂商顺序链（用于自动择优 / 故障切换）：
+// 指定厂商 -> LLM_PROVIDER -> custom -> 其余已配置预置厂商（稳定排序）
+func (s *AgentService) providerChain(requested string) []llmProvider {
+	list := s.ListProviders()
+	byKey := map[string]llmProvider{}
+	for _, p := range list {
+		byKey[p.Key] = p
+	}
+	seen := map[string]bool{}
+	chain := make([]llmProvider, 0, len(list))
+	add := func(key string) {
+		key = strings.TrimSpace(key)
+		if key == "" || seen[key] {
+			return
+		}
+		p, ok := byKey[key]
+		if !ok || !p.Configured {
+			return
+		}
+		seen[key] = true
+		chain = append(chain, p)
+	}
+
+	if requested != "" && requested != "auto" {
+		add(requested)
+	}
+	add(os.Getenv("LLM_PROVIDER"))
+	add("custom")
+
+	presets := providerPresets()
+	sort.SliceStable(presets, func(i, j int) bool { return presets[i].Key < presets[j].Key })
+	for _, p := range presets {
+		add(p.Key)
+	}
+	return chain
+}
+
 // callProvider 按协议分发
 func (s *AgentService) callProvider(ctx context.Context, p llmProvider, req llmRequest) (*llmResponse, error) {
 	if p.Kind == "anthropic" {
