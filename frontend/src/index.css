@@ -1594,3 +1594,10 @@ h1, h2, h3, .brand strong, .topbar-title > span, .skill-card-copy h3 {
 .provider-chat-steps { display: flex; flex-direction: column; gap: 6px; }
 .provider-step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
 .provider-chat-answer { margin: 0; padding: 12px 14px; border-radius: 10px; background: #fff; border: 1px solid #e6ecf4; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.75; color: #22314a; max-height: 340px; overflow: auto; }
+.providers-cmp-card .ant-card-body { display: flex; flex-direction: column; gap: 12px; }
+.providers-cmp-list { display: flex; flex-direction: column; gap: 10px; }
+.provider-cmp-item { border: 1px solid #e6ecf4; border-radius: 10px; padding: 10px 12px; background: #fff; }
+.provider-cmp-item.ok { border-color: rgba(7,193,96,.35); }
+.provider-cmp-item.fail { border-color: rgba(255,77,79,.35); background: rgba(255,77,79,.04); }
+.provider-cmp-head { margin-bottom: 6px; }
+.provider-cmp-answer { margin: 0; padding: 10px 12px; border-radius: 8px; background: #f7f9fc; white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.7; color: #22314a; max-height: 220px; overflow: auto; }

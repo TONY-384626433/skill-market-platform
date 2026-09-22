@@ -84,6 +84,7 @@ export const checkHealth = () => api.get('/health');
 export const getAgentStatus = () => api.get('/agent/status');
 export const getAgentTools = () => api.get('/agent/tools');
 export const getAgentProviders = () => api.get('/agent/providers');
+export const compareProviders = (message, providers) => api.post('/agent/compare', { message, providers }, { timeout: 150000 });
 export const sendAgentMessage = (text, history, provider) => api.post('/agent/chat', { message: text, history, ...(provider ? { provider } : {}) }, { timeout: 190000 });
 
 // 技能推荐 Agent (需求 → 推荐技能)

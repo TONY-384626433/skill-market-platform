@@ -272,6 +272,75 @@ func (s *AgentService) Status(ctx context.Context) map[string]interface{} {
 }
 
 // ============================================================
+// 多厂商并行对比
+// ============================================================
+
+// CompareProviders 同一个问题并发问多家厂商, 返回各自的耗时与回答
+func (s *AgentService) CompareProviders(ctx context.Context, message string, providers []string) ([]map[string]interface{}, error) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil, fmt.Errorf("请输入内容")
+	}
+	targets := make([]llmProvider, 0)
+	if len(providers) == 0 {
+		for _, p := range s.ListProviders() {
+			if p.Configured {
+				targets = append(targets, p)
+			}
+		}
+	} else {
+		for _, key := range providers {
+			if p, ok := s.activeProvider(key); ok {
+				targets = append(targets, p)
+			}
+		}
+	}
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("没有可用的已配置厂商")
+	}
+
+	results := make([]map[string]interface{}, len(targets))
+	var wg sync.WaitGroup
+	for i, p := range targets {
+		wg.Add(1)
+		go func(i int, p llmProvider) {
+			defer wg.Done()
+			start := time.Now()
+			req := llmRequest{
+				Model: p.Model,
+				Messages: []llmMessage{
+					{Role: "system", Content: "你是九江银行 SkillHub 的智能助手，请用简洁的中文回答用户问题。"},
+					{Role: "user", Content: message},
+				},
+				Temperature: 0.3,
+			}
+			resp, err := s.callProvider(ctx, p, req)
+			cost := time.Since(start).Milliseconds()
+			item := map[string]interface{}{
+				"provider": p.Key, "label": p.Label, "model": p.Model, "kind": p.Kind, "latency_ms": cost,
+			}
+			if err != nil {
+				item["ok"] = false
+				item["error"] = err.Error()
+				s.recordProviderAttempt(p.Key, false, cost, err.Error())
+			} else if len(resp.Choices) == 0 {
+				item["ok"] = false
+				item["error"] = "厂商未返回内容"
+				s.recordProviderAttempt(p.Key, false, cost, "empty")
+			} else {
+				item["ok"] = true
+				item["answer"] = contentText(resp.Choices[0].Message.Content)
+				item["tool_calls"] = len(resp.Choices[0].Message.ToolCalls)
+				s.recordProviderAttempt(p.Key, true, cost, "")
+			}
+			results[i] = item
+		}(i, p)
+	}
+	wg.Wait()
+	return results, nil
+}
+
+// ============================================================
 // 大模型编排 (OpenAI 兼容 function calling)
 // ============================================================
 

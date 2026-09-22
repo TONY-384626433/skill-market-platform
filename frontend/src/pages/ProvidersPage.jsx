@@ -4,7 +4,7 @@ import {
   ApiOutlined, CloudServerOutlined, DeploymentUnitOutlined, ReloadOutlined,
   RobotOutlined, SafetyCertificateOutlined, SendOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
-import { getAgentProviders, getAgentStatus, sendAgentMessage } from '../services/api';
+import { getAgentProviders, getAgentStatus, compareProviders, sendAgentMessage } from '../services/api';
 
 const KIND_LABEL = { openai: 'OpenAI 兼容', anthropic: 'Anthropic 协议' };
 
@@ -22,6 +22,9 @@ export default function ProvidersPage() {
   const [provider, setProvider] = useState('');
   const [chat, setChat] = useState(null);
   const [sending, setSending] = useState(false);
+  const [cmpMsg, setCmpMsg] = useState('用一句话说明什么是数据脱敏');
+  const [cmp, setCmp] = useState(null);
+  const [cmping, setCmping] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +60,22 @@ export default function ProvidersPage() {
       message.error('调用失败：' + (err?.response?.data?.error || err?.message));
     } finally {
       setSending(false);
+    }
+  };
+
+  const doCompare = async () => {
+    if (!cmpMsg.trim() || cmping) return;
+    setCmping(true);
+    setCmp(null);
+    try {
+      const res = await compareProviders(cmpMsg.trim(), []);
+      const items = (res?.data || []).slice().sort((a, b) => (a.latency_ms || 0) - (b.latency_ms || 0));
+      setCmp(items);
+      load();
+    } catch (err) {
+      message.error('对比失败：' + (err?.response?.data?.error || err?.message));
+    } finally {
+      setCmping(false);
     }
   };
 
@@ -168,6 +187,31 @@ export default function ProvidersPage() {
         )}
         {(summary.configured_count ?? 0) === 0 && (
           <Alert style={{ marginTop: 12 }} type="warning" showIcon message="尚未配置任何大模型 API Key" description="设置环境变量（如 DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY）并重启后端即可点亮；未配置时 Agent 自动使用本地意图引擎。" />
+        )}
+      </Card>
+
+      <Card className="providers-cmp-card" title={<Space><ThunderboltOutlined /> 多厂商并行对比（同一问题并发问多家）</Space>}>
+        <Space wrap>
+          <Input style={{ width: 460 }} value={cmpMsg} onChange={(e) => setCmpMsg(e.target.value)} onPressEnter={doCompare} placeholder="输入一个问题，并发对比所有已配置厂商" />
+          <Button type="primary" icon={<ThunderboltOutlined />} loading={cmping} onClick={doCompare}>开始对比</Button>
+        </Space>
+        {cmp && (
+          <div className="providers-cmp-list">
+            {cmp.map((it, i) => (
+              <div key={i} className={`provider-cmp-item ${it.ok ? 'ok' : 'fail'}`}>
+                <div className="provider-cmp-head">
+                  <Space wrap>
+                    <Tag color={i === 0 ? 'gold' : 'default'}>{i === 0 && it.ok ? '⚡ 最快 ' : ''}{it.latency_ms} ms</Tag>
+                    <strong>{it.label}</strong>
+                    <code>{it.model}</code>
+                    <Tag color={it.kind === 'anthropic' ? 'purple' : 'blue'}>{it.kind}</Tag>
+                    {!it.ok && <Tag color="error">失败</Tag>}
+                  </Space>
+                </div>
+                <pre className="provider-cmp-answer">{it.ok ? it.answer : ('错误: ' + (it.error || ''))}</pre>
+              </div>
+            ))}
+          </div>
         )}
       </Card>
     </div>

@@ -46,6 +46,26 @@ func (h *AgentHandler) Providers(c *gin.Context) {
 	})
 }
 
+// Compare POST /api/v1/agent/compare — 同一个问题并发对比多家厂商
+func (h *AgentHandler) Compare(c *gin.Context) {
+	var req struct {
+		Message   string   `json:"message" binding:"required"`
+		Providers []string `json:"providers"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误: message 不能为空"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 150*time.Second)
+	defer cancel()
+	items, err := h.svc.CompareProviders(ctx, req.Message, req.Providers)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items, "total": len(items)})
+}
+
 // Chat POST /api/v1/agent/chat — 自然语言对话并自动编排技能
 func (h *AgentHandler) Chat(c *gin.Context) {
 	var req struct {
